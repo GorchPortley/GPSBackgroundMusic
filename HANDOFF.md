@@ -249,8 +249,9 @@ Anything new under `public/` must be added to `SHELL_FILES` in `public/sw.js`
 and `VERSION` bumped, or the installed PWA/APK keeps serving the old shell.
 The Android assets are a verbatim copy:
 `rm -rf android/app/src/main/assets/www && mkdir -p … && cp -r public/* android/app/src/main/assets/www/`
-then rebuild. Nothing named `dev-*.js` or any `.json` belongs in `public/`
-when you build.
+then rebuild (`diff -r public android/app/src/main/assets/www` must be clean).
+Nothing named `dev-*` belongs in `public/` when you build, and no `.json`
+outside `public/packs/` (the example packs ship there on purpose, C0.3).
 One deliberate exception (P5): the sample audio under `public/samples/*/`
 is shipped but **not** listed in `SHELL_FILES` — it is fetched only when a
 playing layer uses it and the SW caches it then; its manifest
@@ -273,9 +274,10 @@ This project lives on Windows 10 and is driven from Git Bash + PowerShell.
 ### 3.13 Secrets and private data
 The Google key lives only in `.env` and is read server-side; the browser gets
 `/api/config` without it. Never print its value (print its length if you must
-check it). `examples/belmont-walk.json` contains the author's **home
-coordinate** in its "Home" cue — never copy that coordinate into another pack,
-a doc, or a test.
+check it). `examples/belmont-walk.json` holds the author's private
+coordinates — never copy the file, or any coordinate from it, into another
+pack, `public/`, a doc, or a test. Open it only to confirm its cue list, and
+never print coordinates.
 
 ### 3.14 Async lookups must be guarded
 `fetchPlaces` increments `fetchSeq` and discards any response that has been
@@ -313,7 +315,11 @@ node -e "for (const f of require('fs').readdirSync('examples')) JSON.parse(requi
 ### Render check — after touching `public/src/audio/*` or any theme
 
 Follow the header of [tools/render-check.js](tools/render-check.js). Pass
-means `window.__R.pass === true` and `spreadDb` ≲ 4. This is the check that
+means `window.__R.pass === true`. `spreadDb` is max − min over *every*
+theme × mood row, so over `allThemes()` it reads ≈10–13 dB because calm and
+busy moods differ; the ≲ 4 dB guideline (§3.9) applies to the spread of each
+theme's loudest row (≈3.3 dB). For `landmarks.json` alone `spreadDb` is
+≈3–4 dB. This is the check that
 catches NaN note times, leaked gain, and level mismatches. Run it against
 `allThemes()` (no `?pack=`) **and** against `examples/landmarks.json`.
 
