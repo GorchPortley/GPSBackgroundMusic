@@ -19,6 +19,7 @@ export const overworld = {
   id: 'overworld',
   name: 'Overworld',
   description: 'Bright looping melody over a walking bass. A worked spec example.',
+  color: '#8fdc6a',
 
   /* --------------------------------------------------------------- global */
 
@@ -38,6 +39,16 @@ export const overworld = {
     { name: 'I — V — vi — IV', degrees: [0, 4, 5, 3], brightness: 0.7 },
     { name: 'I — IV — V — I', degrees: [0, 3, 4, 0], brightness: 0.88 },
   ],
+
+  // Song form (P2): four-bar phrases in A A B A. The tune and its harmony
+  // line play the A phrases; B is a bridge — it moves to the IV chord, turns
+  // back through I and V into the next A, and a composed (generated) line
+  // takes the melody. That bridge line is seeded by the place, so every
+  // place has its own, and it comes back the same each time round.
+  form: {
+    sections: 'AABA',
+    B: { progression: [3, 3, 0, 4] },
+  },
 
   drone: [0.015, 0.05, 's'],
   air: [0.004, 0.016, 's'],
@@ -61,6 +72,7 @@ export const overworld = {
       name: 'lead',
       voice: 'pulse',
       pattern: '0 ~ 2 4 ~ <7 9> 4 ~ 2 ~ ~ <4 2> ~ 0 ~ ~',
+      sections: 'A',
       octave: 3,
       gain: 0.085,
       dur: 1.6,
@@ -72,11 +84,27 @@ export const overworld = {
       name: 'harmony',
       voice: 'pulse',
       pattern: '-2 ~ 0 2 ~ <5 7> 2 ~ 0 ~ ~ <2 0> ~ -2 ~ ~',
+      sections: 'A',
       octave: 3,
       gain: 0.042,
       dur: 1.5,
       level: ['d', 0.5, 0.4],
       params: { duty: 0.5, cutoff: [2000, 5200, 'b'], pan: 0.25 },
+    },
+    {
+      // The bridge melody: only in the B phrase, composed for the place
+      // rather than written out, in a thinner pulse so it reads as a new
+      // voice. Same level curve as the lead, which it stands in for.
+      name: 'bridge',
+      voice: 'pulse',
+      generate: { density: [0.25, 0.55, 'd'], range: [2, 9], leap: [0.1, 0.4, 't'],
+        rest: 0.3, contour: [-0.4, 0.6, 'b'] },
+      sections: 'B',
+      octave: 3,
+      gain: 0.08,
+      dur: 1.6,
+      level: ['d', 0.06, 0.34],
+      params: { duty: 0.125, cutoff: [2400, 6000, 'b'], resonance: 1.1, release: 0.06, pan: -0.2 },
     },
     {
       // Driving eighths, root and fifth — the engine of the whole thing.

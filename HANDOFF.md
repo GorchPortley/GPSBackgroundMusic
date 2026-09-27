@@ -92,27 +92,33 @@ browser; Node built-ins on the server. ~9,600 lines total.
 | `public/src/ui.js` | All DOM. Nothing else touches the DOM | `UI` |
 | `public/src/geo.js` | GPS, simulated routes, derived speed/heading | `GeoTracker`, `haversine`, `bearing` |
 | `public/src/provider.js` | Picks Google-via-server / Overpass-direct / mock | `fetchPlaces`, `geocode`, `usingServer` |
-| `public/src/tags.js` | Place type → mood profile; categories; user overrides | `TAG_PROFILES`, `profileFor`, `categoryFor`, `setTagOverride` |
+| `public/src/tags.js` | Place type → mood profile; categories; user overrides | `TAG_PROFILES`, `profileFor`, `categoryFor`, `setTagOverride`, `placeLabel`, `countedPlaces` |
 | `public/src/osm-tags.js` | OSM tag soup → canonical type | `osmType` |
-| `public/src/scene.js` | Places → mood. Emphasis, peak-pull, contrast, motion | `analyzePlaces`, `contextualise`, `sceneKey`, `lerpMood` |
+| `public/src/weather.js` | Open-Meteo current weather (C3.10): guarded fetch, 15-min cache, 0..1 factors | `WeatherSource`, `fetchWeather`, `weatherFactors`, `weatherUrl` |
+| `public/src/elevation.js` | Hills (P3): GPS altitude or Open-Meteo elevation (guarded, 2-dp grid corners cached per session, bilinear), smoothed history → grade | `ElevationSource`, `terrainFactors`, `describeTerrain`, `elevationUrl`, `cellCorners` |
+| `public/src/scene.js` | Places → mood. Emphasis, peak-pull, contrast, motion | `analyzePlaces`, `contextualise`, `sceneKey`, `lerpMood`, `topContributors`, `whyLine` (C4.1) |
 | `public/src/scenecontext.js` | The `scene` object cues and code themes query | `buildScene` → `{tagWeight(), categoryWeight(), nearest(), named()}` |
-| `public/src/store.js` | Pack load/save/sanitise. **The security boundary** | `sanitise`, `loadPack`, `savePack`, `readPackFile` |
-| `public/src/audio/engine.js` | AudioContext, master chain, transport, plan commits | `AudioEngine`, `STEPS_PER_BAR`, `BARS_PER_PHRASE` |
-| `public/src/audio/voices.js` | 16 synthesised instruments | `padVoice`, `bassVoice`, `pluckVoice`, `kick`, … |
-| `public/src/audio/theory.js` | Scales, modes, progressions, seeded RNG | `scaleNote`, `chordNotes`, `pickMode`, `mulberry32`, `hashString` |
+| `public/src/store.js` | Pack load/save/sanitise. **The security boundary** (themes and cues are deep-copied without `__proto__`/`constructor`/`prototype` keys) | `sanitise`, `loadPack`, `savePack`, `clearStore` (C4.2), `firstRunDismissed` / `setFirstRunDismissed` (C4.4), `readPackFile` |
+| `public/src/share.js` | Pack links (P4): `#pack=` = base64url(deflate-raw(JSON)); decode with input and 256 KB output caps; what a pack holds, in words | `encodePack`, `decodePayload`, `extractPayload`, `shareBase`, `summarisePack`, `SHARE_LINK_MAX`, `PUBLIC_SHARE_BASE` |
+| `public/src/audio/engine.js` | AudioContext, master chain, transport, plan commits | `AudioEngine` (`onCommit` hook: the UI accent turns at the commit, C4.3), `STEPS_PER_BAR`, `BARS_PER_PHRASE` |
+| `public/src/audio/voices.js` | 18 synthesised instruments | `padVoice`, `bassVoice`, `pluckVoice`, `kick`, … |
+| `public/src/audio/ambience.js` | Ambience beds under the music (birds, water, traffic, murmur, rain), on `engine.ambienceGain` | `Ambience`, `AMBIENCE_KINDS` |
+| `public/src/audio/worklets/ks.js` | Karplus–Strong string processor (AudioWorklet, loaded in `engine.start()`) | registers `karplus-strong` |
+| `public/src/audio/theory.js` | Scales, modes, progressions, seeded RNG, voice leading | `scaleNote`, `chordNotes`, `pickMode`, `mulberry32`, `hashString`, `voiceLead` (nearest inversion in a fixed register window), `voiceDistance` |
 | `public/src/themes/index.js` | Theme registry, custom spec registration | `getTheme`, `allThemes`, `registerSpecs`, `customSpecs`, `removeCustom` |
-| `public/src/themes/spec.js` | Declarative theme format → theme | `VOICES`, `validateSpec`, `themeFromSpec`, `stepLayers` |
+| `public/src/themes/spec.js` | Declarative theme format → theme | `VOICES`, `validateSpec`, `themeFromSpec`, `stepLayers`, `generatedEvents` |
 | `public/src/themes/pattern.js` | Mini-notation parser and query | `parsePattern`, `queryPattern`, `readValue` |
+| `public/src/themes/melody.js` | Generated melody (C3.8): seeded Markov walk for a layer's `generate` | `markovBar`, `barRng` |
 | `public/src/themes/cues.js` | Place-bound loops and theme pins | `compileCues`, `evaluateCues`, `pinnedTheme`, `withCues` |
 | `public/src/themes/match.js` | Cue conditions → strength | `matchStrength`, `validateCondition`, `describeCondition` |
 | `public/src/themes/{wanderer,fantasy,scifi,videogame,noir}.js` | Code themes | one theme object each |
 | `public/src/themes/presets/overworld.js` | Built-in spec theme | `overworld` |
-| `public/src/themes/util.js` | Helpers for theme authors | `gate`, `quantise`, `rnd`, `swingOffset` |
+| `public/src/themes/util.js` | Helpers for theme authors | `gate`, `quantise`, `rnd`, `swingOffset`, `breathing` (C3.7), `section` (P2: the phrase's section letter), `leadChord` (per-part voice-leading state; resets on theme/tonic/mode change) |
 | `public/sw.js` | Service worker: app shell + place-lookup cache | — |
 | `server/index.js` | Static files + `/api/config`, `/api/places`, `/api/geocode` | — |
 | `server/places.js` | Google Places (New) `searchNearby`; type aliasing | `getNearbyPlaces`, `providerName` |
 | `server/osm.js` | Overpass query, bounding-box distance | `overpassNearby`, `geocode` |
-| `android/app/src/main/java/dev/gpsmusic/MainActivity.java` | WebView, asset interception, file picker, VIEW/SEND intents, JS bridge `AndroidHost` | — |
+| `android/app/src/main/java/dev/gpsmusic/MainActivity.java` | WebView, asset interception, file picker, VIEW/SEND intents (SEND text = a pack link/code, P4), JS bridge `AndroidHost` (`shareText` → share sheet) | — |
 | `android/app/src/main/java/dev/gpsmusic/PlaybackService.java` | Foreground service (`mediaPlayback\|location`) with notification | — |
 | `examples/*.json` | Shareable packs: `landmarks`, `ocarina`, `belmont-walk`, `cues-example` | — |
 | `tools/render-check.js`, `tools/jump-test.js` | Verification harnesses (see §4) | — |
@@ -156,9 +162,16 @@ in the console.
 
 ### 3.4 Continuous vs discrete plan fields
 Continuous fields (bpm, fx, timbre, trim, layer levels) take effect at once
-via `setTargetAtTime` in `_applyContinuous`. Discrete fields (`themeId`,
+via `setTargetAtTime` in `_applyContinuous`; `ambience` is continuous too,
+folded into the ambience levels by main.js (`updateAmbience` → `setAmbience`);
+so is `cuePans` (spatial cues, C3.5), glided on per-cue panners by `_applyCuePans`. Discrete fields (`themeId`,
 `root`, `scale`, `progression`, `barsPerChord`) wait for a phrase boundary —
-see `isDiscreteChange` at the bottom of engine.js. **If you add a plan field,
+see `isDiscreteChange` at the bottom of engine.js. `form` (C3.7 breath) is a
+theme constant: it only changes with `themeId`, so it rides that discrete
+change and needs no entry of its own; `step` reads it from the sounding plan.
+Its section form (P2, `form.sections`) is a function of `pos.phrase`, so a
+section change is on a phrase seam by construction and is not a plan field
+either. **If you add a plan field,
 decide which bucket it is in and wire it accordingly.** Cue membership is
 deliberately *not* discrete (the comment in `replan` explains why: it would
 hold the cue until the boundary and then drop it in at full volume).
@@ -171,7 +184,10 @@ of the next 4-bar **phrase**. It is set only on the jump path: `goTo()` arms
 `pendingJump`; `fetchPlaces` converts it to `snapCues` once the new scene has
 actually arrived; `replan` consumes it. In the engine, urgency persists in
 `_pending` until the change commits, because position ticks re-call
-`applyPlan` every second with `urgent: false`. *Noticed by:* the jump test
+`applyPlan` every second with `urgent: false`. A pending change is dropped
+if a later `applyPlan` matches what is already playing (you went back), and
+so is the handover riser scheduled for it (C3.6; `reverbReturn` is only ever
+automated through `_setReverbReturn`). *Noticed by:* the jump test
 showing 12–16 s instead of 1–3 s.
 
 ### 3.6 Cues are strengths, not booleans
@@ -704,9 +720,10 @@ brightness controlling contour.
 **Where.** `spec.js` (`validateSpec`: `pattern` XOR `generate`; `compileLayers`;
 `stepLayers` calls a `generatedEvents(layer, plan, bar)` cached per `(bar)`
 in the layer), new `public/src/themes/melody.js` with the algorithm, THEMES.md §2.
-**Spec.** `generate: { kind: "markov", density: 0.45 | ["d", 0.3, 0.7],
-range: [0, 9], leap: 0.2 | ["t", 0.1, 0.5], rest: 0.35, contour: 0 |
-["b", -1, 1] }` — every number may be a mood expression like other spec numbers.
+**Spec.** `generate: { kind: "markov", density: 0.45 | [0.3, 0.7, "d"],
+range: [0, 9], leap: 0.2 | [0.1, 0.5, "t"], rest: 0.35, contour: 0 |
+[-1, 1, "b"] }` — every number may be a mood expression like other spec
+numbers (`[min, max, dim]`, resolved by `num()`).
 **Algorithm** (deterministic — `rng = mulberry32(plan.seed ^ (bar * 2654435761
 >>> 0) ^ hashString(layer.name))`):
 1. For each of 16 steps: skip with probability `rest` unless it is step 0 of
@@ -794,18 +811,55 @@ example pack (C0.3). Dismiss stores a flag in `localStorage`.
 
 ## 6. Parking lot — ideas considered, not specified
 
-- **Share a pack by link** (`#pack=<base64>`): great for the sharing goal,
-  but URL length caps it at ~2 KB packs after compression; needs a
-  `CompressionStream` step. Do it only if people actually share.
-- **Elevation → tension** (Open-Meteo elevation API): climbing a hill adds
-  `t`. Cheap once C3.10 exists; fold it in there if wanted.
+- ~~**Share a pack by link**~~ — **done (P4).** `public/src/share.js`.
+  "Share link" in the Anywhere panel: scope (everything / only what I made
+  here / themes only / one cue; a cue brings the imported theme it pins),
+  a name, and saved places **off unless ticked** (the panel also names every
+  cue bound to coordinates). `#pack=` = base64url(deflate-raw(compact
+  sanitised JSON)); links over `SHARE_LINK_MAX` 8 KB are refused with advice
+  to export a file (landmarks in full ≈ 4.1 KB, themes only ≈ 3.3 KB).
+  Import (load or `hashchange`): hash cleared with `replaceState` at once,
+  payload ≤ 32 KB, decompressed in 512-byte slices and cancelled past 256 KB,
+  then an in-page `<dialog>` confirm (name + counts; Cancel/Escape import
+  nothing), then `importPackText` — the same sanitise/validate path as a
+  paste. Paste accepts a link, `#pack=` or `pack=` code; so does a text
+  SEND intent on Android. In the APK there is no public origin, so it shares
+  a bare `pack=` code (plus `AndroidHost.shareText` → share sheet) unless
+  `PUBLIC_SHARE_BASE` is set; https VIEW links do not open the app (no
+  verified host to filter on). `sanitise` now strips unsafe keys at any depth
+  in themes and cues; packs may carry a display-only `name`.
+- ~~**Elevation → tension**~~ — **done (P3).** `public/src/elevation.js`,
+  own toggle "Hills" (default off, not persisted). Height is GPS
+  `coords.altitude` when the fix has one (accuracy ≤ 30 m or unstated), else
+  Open-Meteo `/v1/elevation` at the four 2-dp corners of your 0.01° cell,
+  bilinear between them; corners cached in memory for the session, requests
+  seq-guarded (§3.14), failures silent with a 60 s per-cell backoff. A source
+  change or a > 500 m step restarts the history. Grade = gain ÷ max(run,
+  150 m) over the last 250 m / 5 min; `contextualise`: `t += 0.10·climb01 −
+  0.03·descent01`, `s += 0.04·high01` (climb01: 2 % → 0, 8 % → 1; high01:
+  150 m above the start). Band badge ↗/↘, why line "· climbing".
 - **Sample-based instruments** (SoundFont/WAV): breaks §3.1 and adds
   megabytes. Only with the user's explicit say-so.
-- **Section form (A A B A)**: C3.7 gets most of the anti-monotony value for
-  1/10 of the work. Revisit after C3.8.
-- **Voice-leading chords**: `theory.voice()` only spreads; a nearest-inversion
-  `voiceLead(prev, next)` would smooth pad changes. Small; do it if pads sound
-  jumpy after C3.2.
+- ~~**Section form (A A B A)**~~ — **done (P2).** `spec.form.sections`
+  (`"AABA"`, 1–8 letters A–D, one per phrase, cycling) and per-letter tweaks
+  `form.B = { progression?, degreeShift?, density? }`; a layer's `sections`
+  (`"B"`, `"AB"`) limits where it plays. The letter is `util.section(plan,
+  pos)` = `sections[pos.phrase % length]`, so it only changes on a phrase seam
+  and the engine is untouched (no new discrete field: `form` still rides
+  `themeId`). A section `progression` restarts at each of its phrases
+  (`spec.js` `harmonyAt`); `density` resolves per-section levels in `plan()`.
+  With sections, `generate` is keyed on (letter, bar in phrase), so each
+  letter's line repeats. Overworld plays A A B A (bridge on IV with a
+  generated line). Themes without `sections` produce identical events to
+  before. THEMES.md §2 "Sections".
+- ~~**Voice-leading chords**~~ — **done (P1).** `theory.voiceLead(prev, next,
+  { anchor, range })` picks the inversion × octave of `next` with the least
+  movement, lowest note within ±`range` of a fixed anchor (plus the un-led
+  voicing, so leading never moves more than not leading); `util.leadChord`
+  keeps the per-part state (on the compiled layer in spec.js; a module object
+  in wanderer/fantasy) and resets on theme, tonic or mode change. Spec layers:
+  `voiceLead`, default on for `pad`/`strings` (THEMES.md §2). Overworld pad
+  movement per change in the page: 18.2 → 4.4 semitones.
 - **iOS**: PWA only; Safari suspends Web Audio when locked and there is no
   foreground-service equivalent. Not solvable without a native shell.
 - **Transit realtime (GTFS-RT) chimes**: fun, but per-city feeds and keys.
@@ -823,6 +877,7 @@ example pack (C0.3). Dismiss stores a flag in `localStorage`.
 {
   "version": 1,
   "_about": "free text, ignored",
+  "name": "…",                              // optional display label (share links, P4)
   "theme": "wanderer",                      // default theme id
   "tagOverrides": { "cafe": { "e": 0.6 } }, // partial mood per canonical type
   "locations": [{ "name": "…", "lat": 0, "lng": 0 }],
@@ -848,6 +903,8 @@ example pack (C0.3). Dismiss stores a flag in `localStorage`.
 | `flute` | pitched | 0.09 | breathy lead |
 | `pulse` | pitched | 0.085 | chiptune / accordion (duty) |
 | `blip` | pitched | 0.05 | tiny sine pip |
+| `fm` | pitched | 0.08 | two-op FM: e-piano / bell / glass (`ratio`, `index`, `decay`) |
+| `string` | pitched | 0.10 | Karplus–Strong plucked string, AudioWorklet (`decay`, `bright`); falls back to `pluck` |
 | `kick`, `hat`, `shaker`, `rim`, `clank`, `brush`, `sweep` | unpitched | 0.38 / 0.05 / 0.035 / 0.08 / 0.09 / 0.05 / 0.06 | percussion & fx |
 
 Parameters per voice are in THEMES.md §4. Chordal voices take `chordSize`;
@@ -860,11 +917,15 @@ pitched take `octave`; unpitched take only `x` hits.
 | `REPLAN_MS` | main.js | 1500 | how often the plan is recomputed |
 | `MOOD_ALPHA` | main.js | 0.16 | mood smoothing per replan |
 | `FETCH_MIN/MAX_INTERVAL_MS` | main.js | 8000 / 75000 | lookup cadence, scaled by speed |
+| `STATIONARY_MS` / `MOVE_M` | geo.js | 120000 / 25 | still this long → coarse GPS; moved this far → fine |
+| `FETCH_STATIONARY_INTERVAL_MS` | main.js | 300000 | lookup refresh while GPS is coarse |
 | `CUE_SMOOTHING` | cues.js | 0.25 | cue strength approach per tick |
 | `PIN_ON` / `PIN_OFF` | cues.js | 0.55 / 0.32 | theme pin hysteresis |
 | `PRESENCE_FLOOR` | scenecontext.js | 1.6 | stops sparse areas over-claiming |
 | `URBAN_HALF_WEIGHT` | scene.js | 14 | total weight at which urbanness = 0.5 |
 | `STEPS_PER_BAR` / `BARS_PER_PHRASE` | engine.js | 16 / 4 | the grid |
+| `GRADE_FLAT` / `GRADE_FULL` | elevation.js | 0.02 / 0.08 | grade at which climbing starts / is full (`t` +0.10) |
+| `TERRAIN_WINDOW_M` / `_MS` | elevation.js | 250 / 300000 | the grade is measured over this much travel or time |
 | makeup / limiter | engine.js | 1.65 / −1.5 dB 20:1 | do not touch to fix one theme |
 
 ### D. Things that were verified and things that were not

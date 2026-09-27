@@ -4,7 +4,7 @@
  * continuously as the scene changes instead of crossfading between clips.
  *
  * Every voice takes an `io` bundle from the engine:
- *   { ctx, dry, reverb, delay, noiseBuffer }
+ *   { ctx, dry, reverb, delay, noiseBuffer, hasWorklets }
  * where dry/reverb/delay are destination GainNodes (the sends).
  */
 
@@ -257,6 +257,175 @@ export function bellVoice(io, {
   carrier.start(time); carrier.stop(end);
 
   route(io, out, end, { reverb, delay });
+}
+
+/** Finite number or the default — pack params can be anything. */
+function finite(v, d) { return Number.isFinite(v) ? v : d; }
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+/**
+ * General two-operator FM: sine modulator at `f * ratio` → depth gain →
+ * carrier.frequency. Unlike `bell` it holds for `dur` and releases, so it can
+ * be an electric piano (`ratio: 1`), a bell (`3.5`) or a glassy lead (`7`).
+ * `index` is the peak modulation depth in multiples of the carrier frequency;
+ * it falls to 5% of that over `decay` seconds, which is what turns the struck
+ * clang into a purer tone.
+ */
+export function fmVoice(io, {
+  note, time, dur, gain = 0.08, ratio = 2, index = 2, decay = 0.6,
+  release = 0.3, reverb = 0.3, delay = 0, pan = 0,
+}) {
+  const ctx = io.ctx;
+  const freq = midiToFreq(note);
+  if (!Number.isFinite(freq) || !Number.isFinite(time)) return;
+
+  const d = clamp(finite(dur, 0.5), 0.02, 30);
+  const peak = Math.max(0, finite(gain, 0.08));
+  const r = clamp(finite(ratio, 2), 0.25, 12);
+  const idx = clamp(finite(index, 2), 0, 12);
+  const dec = clamp(finite(decay, 0.6), 0.01, 30);
+  const rel = clamp(finite(release, 0.3), 0.01, 10);
+  const p = clamp(finite(pan, 0), -1, 1);
+  const end = time + d + rel + 0.1;
+
+  const out = ctx.createGain();
+  const attack = Math.min(0.005, d * 0.5);
+  out.gain.setValueAtTime(SILENCE, time);
+  out.gain.linearRampToValueAtTime(Math.max(SILENCE, peak), time + attack);
+  out.gain.setValueAtTime(Math.max(SILENCE, peak), time + d);
+  out.gain.exponentialRampToValueAtTime(SILENCE, time + d + rel);
+
+  const carrier = ctx.createOscillator();
+  carrier.type = 'sine';
+  carrier.frequency.value = freq;
+
+  const modulator = ctx.createOscillator();
+  modulator.type = 'sine';
+  modulator.frequency.value = freq * r;
+
+  const modDepth = ctx.createGain();
+  if (idx > 0) {
+    modDepth.gain.setValueAtTime(idx * freq, time);
+    modDepth.gain.exponentialRampToValueAtTime(idx * freq * 0.05, time + dec);
+  } else {
+    modDepth.gain.value = 0;
+  }
+  modulator.connect(modDepth).connect(carrier.frequency);
+
+  let panner = null;
+  if (p !== 0 && ctx.createStereoPanner) {
+    panner = ctx.createStereoPanner();
+    panner.pan.value = p;
+    carrier.connect(panner).connect(out);
+  } else {
+    carrier.connect(out);
+  }
+
+  modulator.start(time); modulator.stop(end);
+  carrier.start(time); carrier.stop(end);
+  carrier.onended = () => {
+    try {
+      modulator.disconnect(); modDepth.disconnect(); carrier.disconnect();
+      if (panner) panner.disconnect();
+    } catch { /* already gone */ }
+  };
+
+  route(io, out, end, { reverb, delay });
+}
+
+/* ------------------------------------------------------ plucked string (KS) */
+
+/**
+ * Live Karplus–Strong nodes, for leak checks: `created` counts nodes made,
+ * `ended` counts processors that reported they finished (and were
+ * disconnected), `live` is the worklet scope's own count at the last report.
+ */
+export const ksStats = { created: 0, ended: 0, live: 0, fallback: 0 };
+
+/**
+ * Physically-modelled plucked string: one AudioWorkletNode per note running
+ * the processor in worklets/ks.js. `decay` is roughly the time to fall 60 dB
+ * and sets the loop damping; `bright` low-passes the pluck (0 dull thumb,
+ * 1 bright pick). The node ends itself once the note has died, or after
+ * `decay + 2 s` at the latest. Falls back to `pluckVoice` when the engine
+ * could not load worklets (insecure context, old WebView, load failure).
+ */
+export function ksVoice(io, {
+  note, time, gain = 0.1, decay = 1.5, bright = 0.5, reverb = 0.3, delay = 0.15, pan = 0,
+}) {
+  const ctx = io.ctx;
+  const freq = midiToFreq(note);
+  if (!Number.isFinite(freq) || !Number.isFinite(time)) return;
+
+  const peak = Math.max(0, finite(gain, 0.1));
+  const dec = clamp(finite(decay, 1.5), 0.05, 10);
+  const b = clamp(finite(bright, 0.5), 0, 1);
+  const p = clamp(finite(pan, 0), -1, 1);
+  const rv = Math.max(0, finite(reverb, 0.3));
+  const dl = Math.max(0, finite(delay, 0.15));
+
+  if (!io.hasWorklets || typeof AudioWorkletNode === 'undefined') {
+    ksStats.fallback++;
+    pluckVoice(io, { note, time, gain: peak, decay: Math.min(dec, 2), bright: b, reverb: rv, delay: dl, pan: p });
+    return;
+  }
+
+  const f = clamp(freq, 20, 5000);
+  // Loop gain per period for a 60 dB fall over `dec`, less what the two-point
+  // average already takes off the fundamental.
+  const perPeriod = Math.pow(10, -3 / (f * dec));
+  const damping = clamp(perPeriod / Math.cos(Math.PI * f / ctx.sampleRate), 0.9, 0.999);
+  const life = dec + 2;
+  // Deterministic per note, so a render is reproducible.
+  const seed = (Math.imul(Math.round(note * 16) | 0, 2654435761) ^ Math.round(time * 1e4)) >>> 0;
+
+  let node;
+  try {
+    node = new AudioWorkletNode(ctx, 'karplus-strong', {
+      numberOfInputs: 0,
+      numberOfOutputs: 1,
+      outputChannelCount: [1],
+      parameterData: { frequency: f, damping, brightness: b },
+      processorOptions: { startTime: time, maxDur: life, seed },
+    });
+  } catch {
+    ksStats.fallback++;
+    pluckVoice(io, { note, time, gain: peak, decay: Math.min(dec, 2), bright: b, reverb: rv, delay: dl, pan: p });
+    return;
+  }
+  ksStats.created++;
+
+  const out = ctx.createGain();
+  // The string decays on its own; the envelope only guarantees silence by
+  // the time the processor's hard stop comes round. The level is set from
+  // now, not from `time`: if `time` falls a hair after the processor's start
+  // frame, the first sample would otherwise pass at the default gain of 1.
+  out.gain.setValueAtTime(Math.max(SILENCE, peak), Math.max(0, Math.min(ctx.currentTime, time)));
+  out.gain.setValueAtTime(Math.max(SILENCE, peak), time + dec);
+  out.gain.exponentialRampToValueAtTime(SILENCE, time + life - 0.05);
+
+  let panner = null;
+  if (p !== 0 && ctx.createStereoPanner) {
+    panner = ctx.createStereoPanner();
+    panner.pan.value = p;
+    node.connect(panner).connect(out);
+  } else {
+    node.connect(out);
+  }
+
+  node.port.onmessage = (e) => {
+    if (!e.data || !e.data.done) return;
+    ksStats.ended++;
+    ksStats.live = e.data.live;
+    try {
+      node.disconnect();
+      if (panner) panner.disconnect();
+    } catch { /* already gone */ }
+    node.port.onmessage = null;
+    node.port.close();
+  };
+
+  route(io, out, time + life, { reverb: rv, delay: dl });
 }
 
 /* -------------------------------------------------------------- percussion */

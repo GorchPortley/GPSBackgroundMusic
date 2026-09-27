@@ -10,9 +10,26 @@ import {
   hasOverride, prettyTag, profileFor,
 } from './tags.js';
 import { SIM_SPEEDS } from './geo.js';
+import { describeWeather } from './weather.js';
+import { describeTerrain } from './elevation.js';
 import { THEMES } from './themes/index.js';
+import { isThemeColor } from './themes/spec.js';
+import { LOOP_PRESETS } from './themes/presets/loops.js';
 
 const $ = (id) => document.getElementById(id);
+
+/** Cue radius slider: log scale, so 50 m and 3 km are both easy to hit. */
+const CUE_RADIUS_MIN = 50;
+const CUE_RADIUS_MAX = 3000;
+const CUE_SLIDER_MAX = 1000;
+
+/**
+ * Theme colour (C4.3). A theme without `color` gets this — the same value as
+ * `--accent` in styles.css. The fade matches the CSS transition on `--accent`
+ * so the radar (a canvas, which CSS cannot animate) turns with the page.
+ */
+const DEFAULT_ACCENT = '#6ee7d0';
+const ACCENT_FADE_MS = 1500;
 
 export class UI {
   constructor(handlers = {}) {
@@ -22,28 +39,74 @@ export class UI {
       power: $('power'),
       powerLabel: $('powerLabel'),
       volume: $('volume'),
+      ambience: $('ambience'),
+      paceLock: $('paceLock'),
+      weatherOn: $('weatherOn'),
+      hillsOn: $('hillsOn'),
       simRow: $('simRow'),
       simSpeed: $('simSpeed'),
       placeSearch: $('placeSearch'),
       searchGo: $('searchGo'),
       searchResults: $('searchResults'),
       saveHere: $('saveHere'),
+      bindHere: $('bindHere'),
+      cueEditor: $('cueEditor'),
+      cueEditorTitle: $('cueEditorTitle'),
+      cueEditorWhere: $('cueEditorWhere'),
+      cueName: $('cueName'),
+      cueRadius: $('cueRadius'),
+      cueRadiusOut: $('cueRadiusOut'),
+      cueTheme: $('cueTheme'),
+      cuePresets: $('cuePresets'),
+      cueEditorHint: $('cueEditorHint'),
+      cueSave: $('cueSave'),
+      cueDelete: $('cueDelete'),
+      cueCancel: $('cueCancel'),
+      cueList: $('cueList'),
       savedList: $('savedList'),
       exportPack: $('exportPack'),
       importPack: $('importPack'),
       importFile: $('importFile'),
+      examplePacks: $('examplePacks'),
       pasteToggle: $('pasteToggle'),
       pasteRow: $('pasteRow'),
       pasteArea: $('pasteArea'),
       pasteApply: $('pasteApply'),
       pasteCancel: $('pasteCancel'),
+      shareToggle: $('shareToggle'),
+      shareRow: $('shareRow'),
+      shareScope: $('shareScope'),
+      shareLocations: $('shareLocations'),
+      shareLocationsLabel: $('shareLocationsLabel'),
+      shareName: $('shareName'),
+      shareSummary: $('shareSummary'),
+      shareCopy: $('shareCopy'),
+      shareCancel: $('shareCancel'),
+      shareOutRow: $('shareOutRow'),
+      shareOut: $('shareOut'),
+      shareConfirm: $('shareConfirm'),
+      shareConfirmName: $('shareConfirmName'),
+      shareConfirmList: $('shareConfirmList'),
+      shareConfirmOk: $('shareConfirmOk'),
+      shareConfirmCancel: $('shareConfirmCancel'),
       packHint: $('packHint'),
+      pmSummary: $('pmSummary'),
+      pmThemes: $('pmThemes'),
+      pmTags: $('pmTags'),
+      pmTagReset: $('pmTagReset'),
+      pmResetAll: $('pmResetAll'),
+      pmFirstRun: $('pmFirstRun'),
+      firstRun: $('firstRun'),
+      firstRunTitle: $('firstRunTitle'),
+      firstRunExamples: $('firstRunExamples'),
+      firstRunDismiss: $('firstRunDismiss'),
       theme: $('theme'),
       themeNote: $('themeNote'),
       themeHeld: $('themeHeld'),
       radar: $('radar'),
       sceneName: $('sceneName'),
       sceneMeta: $('sceneMeta'),
+      sceneWhy: $('sceneWhy'),
       statusLine: $('statusLine'),
       moodBars: $('moodBars'),
       tagList: $('tagList'),
@@ -68,10 +131,16 @@ export class UI {
     this._raf = null;
     this._editing = null;   // canonical tag type currently open in the editor
     this._tags = [];
+    this._cueDraft = null;  // { lat, lng, radius } while the cue editor is open
+    this._cueRows = [];     // per-cue strength elements in #cueList
+    // Radar tint: fades from `from` to `to` (rgb triples) starting at `t0`.
+    const rgb0 = hexToRgb(DEFAULT_ACCENT);
+    this._accent = { hex: DEFAULT_ACCENT, from: rgb0, to: rgb0, t0: 0 };
 
     this._buildMoodBars();
     this._buildSimSpeeds();
     this._buildThemes();
+    this._buildCueEditor();
     this._bind();
     this._resize();
 
@@ -109,12 +178,12 @@ export class UI {
   }
 
   _buildSimSpeeds() {
-    SIM_SPEEDS.forEach((s, i) => {
+    SIM_SPEEDS.forEach((s) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = s.label;
       b.dataset.mps = String(s.mps);
-      if (i === 0) b.classList.add('active');
+      if (s.id === 'walk') b.classList.add('active');
       b.addEventListener('click', () => {
         [...this.el.simSpeed.children].forEach((c) => c.classList.remove('active'));
         b.classList.add('active');
@@ -156,11 +225,140 @@ export class UI {
     this.el.themeNote.textContent = THEMES.find((t) => t.id === id)?.description || '';
   }
 
+  /** One checkbox per loop preset; the fields themselves are in index.html. */
+  _buildCueEditor() {
+    for (const preset of LOOP_PRESETS) {
+      const label = document.createElement('label');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.value = preset.id;
+      const text = document.createElement('span');
+      text.textContent = preset.name;
+      label.append(box, text);
+      this.el.cuePresets.append(label);
+    }
+
+    this.el.cueRadius.addEventListener('input', () => {
+      const r = sliderToRadius(Number(this.el.cueRadius.value));
+      this.el.cueRadiusOut.textContent = formatMetres(r);
+      if (this._cueDraft) this._cueDraft.radius = r;
+    });
+
+    this.el.cueSave.addEventListener('click', () => {
+      const presets = [...this.el.cuePresets.querySelectorAll('input:checked')]
+        .map((b) => b.value);
+      this.h.onCueSave?.({
+        name: this.el.cueName.value.trim(),
+        radius: this._cueDraft?.radius ?? sliderToRadius(Number(this.el.cueRadius.value)),
+        theme: this.el.cueTheme.value || null,
+        presets,
+      });
+    });
+    this.el.cueDelete.addEventListener('click', () => this.h.onCueDelete?.(null));
+    this.el.cueCancel.addEventListener('click', () => {
+      this.closeCueEditor();
+      this.h.onCueCancel?.();
+    });
+  }
+
+  /** "— none —" plus every playable theme, rebuilt on open so pack themes show. */
+  _fillCueThemes(selected) {
+    const sel = this.el.cueTheme;
+    sel.replaceChildren();
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = '\u2014 none \u2014';
+    sel.append(none);
+    for (const theme of THEMES) {
+      if (!theme.available) continue;
+      const opt = document.createElement('option');
+      opt.value = theme.id;
+      opt.textContent = theme.name;
+      sel.append(opt);
+    }
+    sel.value = selected && THEMES.some((t) => t.id === selected) ? selected : '';
+  }
+
+  /** The Ambience slider, 0..1 (default 60 %, like volume's 80 %, set in index.html). */
+  ambienceLevel() {
+    const v = Number(this.el.ambience?.value);
+    return Number.isFinite(v) ? Math.min(1, Math.max(0, v / 100)) : 0.6;
+  }
+
+  /**
+   * "Match my pace" (C3.9). Off by default and not persisted — like the
+   * volume and ambience sliders, it starts from index.html each launch.
+   */
+  paceLock() {
+    return !!this.el.paceLock?.checked;
+  }
+
+  /**
+   * "Use local weather" (C3.10). Off by default and not persisted, like pace
+   * lock: turning it on is what sends a (rounded) position to Open-Meteo, so
+   * it is a choice made each launch.
+   */
+  weatherOn() {
+    return !!this.el.weatherOn?.checked;
+  }
+
+  /** The reading in use (weather.js shape), or null. Shown on the band badge. */
+  setWeather(w) {
+    this._weather = w || null;
+    this._renderBand();
+  }
+
+  /**
+   * "Climbing adds tension" (P3). Off by default and not persisted, like
+   * weather: without GPS altitude it sends rounded grid points to Open-Meteo.
+   */
+  hillsOn() {
+    return !!this.el.hillsOn?.checked;
+  }
+
+  /** The terrain reading (elevation.js shape), or null. An arrow on the band badge. */
+  setTerrain(t) {
+    const tr = describeTerrain(t);
+    const key = tr ? `${tr.glyph}|${tr.text}` : '';
+    if (key === this._terrainKey) return;   // called every replan; touch the DOM on change only
+    this._terrainKey = key;
+    this._terrain = tr;
+    this._renderBand();
+  }
+
+  /** Band label plus, when known, one glyph for the weather and an arrow for a climb. */
+  _renderBand() {
+    const badge = this.el.bandBadge;
+    if (!badge) return;
+    const wx = describeWeather(this._weather);
+    const tr = this._terrain || null;
+    const band = this._band || badge.dataset.band || '\u2026';
+    badge.dataset.band = band;
+    badge.textContent = [band, wx?.glyph, tr?.glyph].filter(Boolean).join(' ');
+    badge.title = ['Time of day shading', wx?.text, tr?.text].filter(Boolean).join(' \u00b7 ');
+    if (wx) badge.dataset.weather = wx.text;
+    else delete badge.dataset.weather;
+    if (tr) badge.dataset.terrain = tr.text;
+    else delete badge.dataset.terrain;
+  }
+
   _bind() {
     this.el.power.addEventListener('click', () => this.h.onPower?.());
 
     this.el.volume.addEventListener('input', () => {
       this.h.onVolume?.(Number(this.el.volume.value) / 100);
+    });
+    this.el.ambience.addEventListener('input', () => {
+      this.h.onAmbience?.(this.ambienceLevel());
+    });
+    this.el.paceLock?.addEventListener('change', () => {
+      this.h.onPaceLock?.(this.paceLock());
+    });
+    this.el.weatherOn?.addEventListener('change', () => {
+      this.h.onWeather?.(this.weatherOn());
+    });
+    this.el.hillsOn?.addEventListener('change', () => {
+      this.h.onHills?.(this.hillsOn());
     });
 
     for (const btn of document.querySelectorAll('.segmented [data-mode]')) {
@@ -180,6 +378,7 @@ export class UI {
     });
 
     this.el.saveHere.addEventListener('click', () => this.h.onSaveHere?.());
+    this.el.bindHere.addEventListener('click', () => this.h.onBindHere?.());
     this.el.exportPack.addEventListener('click', () => this.h.onExportPack?.());
     this.el.importPack.addEventListener('click', () => this.el.importFile.click());
     this.el.importFile.addEventListener('change', () => {
@@ -188,20 +387,209 @@ export class UI {
       this.el.importFile.value = '';
     });
 
+    this.el.examplePacks.addEventListener('change', () => {
+      const sel = this.el.examplePacks;
+      const opt = sel.selectedOptions[0];
+      if (opt?.value) this.h.onExamplePack?.(opt.value, opt.textContent);
+      sel.selectedIndex = 0;
+    });
+
     this.el.pasteToggle.addEventListener('click', () => {
       const showing = !this.el.pasteRow.hidden;
       this.el.pasteRow.hidden = showing;
       if (!showing) this.el.pasteArea.focus();
     });
+    this.el.pmTagReset.addEventListener('click', () => this.h.onTagResetAll?.());
+    this.el.pmResetAll.addEventListener('click', () => {
+      const ok = window.confirm(
+        'Reset everything?\n\nThis removes every imported theme, cue, saved place and ' +
+        'tag edit, and goes back to the default theme. Export a pack first if you ' +
+        'want to keep any of it.');
+      if (ok) this.h.onResetEverything?.();
+    });
+
+    this.el.pmFirstRun.addEventListener('click', () => this.h.onFirstRunShow?.());
+    this.el.firstRunDismiss.addEventListener('click', () => this.h.onFirstRunDismiss?.());
+    this.el.firstRunExamples.addEventListener('click', () => {
+      const sel = this.el.examplePacks;
+      sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      sel.focus({ preventScroll: true });
+    });
+
+    // Share by link (P4). Every change re-summarises and re-measures.
+    this.el.shareToggle.addEventListener('click', () => {
+      if (this.el.shareRow.hidden) this.h.onShareOpen?.();
+      else this.closeShare();
+    });
+    const shareChanged = () => {
+      this.el.shareOutRow.hidden = true;
+      this.h.onShareChange?.(this.shareOptions());
+    };
+    this.el.shareScope.addEventListener('change', () => {
+      const opt = this.el.shareScope.selectedOptions[0];
+      if (opt?.dataset.name) this.el.shareName.value = opt.dataset.name;
+      shareChanged();
+    });
+    this.el.shareLocations.addEventListener('change', shareChanged);
+    this.el.shareName.addEventListener('change', shareChanged);
+    this.el.shareCopy.addEventListener('click', () => this.h.onShareCopy?.(this.shareOptions()));
+    this.el.shareCancel.addEventListener('click', () => this.closeShare());
+    this.el.shareOut.addEventListener('focus', () => this.el.shareOut.select());
+
     this.el.pasteCancel.addEventListener('click', () => this.hidePaste());
     this.el.pasteApply.addEventListener('click', () => {
       this.h.onPastePack?.(this.el.pasteArea.value);
     });
   }
 
+  /**
+   * First-run card (C4.4). Inline, not modal: Play and everything else stay
+   * usable while it is up. It takes focus only when asked for from the pack
+   * manager ("Show again"); on first launch it waits to be read. Dismissing
+   * hands focus to Play, the next thing to do, so it is never lost to <body>.
+   */
+  showFirstRun({ focus = false } = {}) {
+    this.el.firstRun.hidden = false;
+    if (focus) {
+      this.el.firstRun.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      this.el.firstRunTitle.focus({ preventScroll: true });
+    }
+  }
+
+  hideFirstRun() {
+    const hadFocus = this.el.firstRun.contains(document.activeElement);
+    this.el.firstRun.hidden = true;
+    if (hadFocus) this.el.power.focus();
+  }
+
   hidePaste() {
     this.el.pasteRow.hidden = true;
     this.el.pasteArea.value = '';
+  }
+
+  /* ------------------------------------------------------ share by link */
+
+  /**
+   * Open the share panel. `scopes` is [{ value, label, name }]; `name` is the
+   * default label for that choice. Saved places start unticked, every time:
+   * they are exact coordinates, often home-like, and sharing them is opt-in.
+   */
+  openShare({ scopes, places }) {
+    const sel = this.el.shareScope;
+    sel.replaceChildren();
+    for (const s of scopes) {
+      const opt = document.createElement('option');
+      opt.value = s.value;
+      opt.textContent = s.label;
+      opt.dataset.name = s.name || '';
+      sel.append(opt);
+    }
+    sel.selectedIndex = 0;
+    this.el.shareName.value = scopes[0]?.name || '';
+    this.el.shareLocations.checked = false;
+    this.el.shareLocations.disabled = !places;
+    this.el.shareLocationsLabel.textContent = places
+      ? `Include my ${places} saved place${places === 1 ? '' : 's'} (exact coordinates \u2014 off unless you tick it)`
+      : 'No saved places to include';
+    this.el.shareOutRow.hidden = true;
+    this.el.shareOut.value = '';
+    this.el.shareRow.hidden = false;
+    this.el.pasteRow.hidden = true;
+    this.h.onShareChange?.(this.shareOptions());
+  }
+
+  closeShare() {
+    this.el.shareRow.hidden = true;
+    this.el.shareOut.value = '';
+    this.el.shareOutRow.hidden = true;
+  }
+
+  shareOptions() {
+    return {
+      scope: this.el.shareScope.value,
+      locations: this.el.shareLocations.checked,
+      name: this.el.shareName.value.trim().slice(0, 80),
+    };
+  }
+
+  /** `lines` as from summarisePack; `note` a closing sentence; warn tints it. */
+  setShareSummary({ lines = [], note = '', warn = false } = {}) {
+    const box = this.el.shareSummary;
+    box.replaceChildren();
+    box.classList.toggle('warn', warn);
+    for (const l of lines) {
+      const span = document.createElement('span');
+      span.textContent = l.text + (/[.!?]$/.test(l.text) ? ' ' : '. ');
+      if (l.warn) span.style.color = 'var(--warn)';
+      box.append(span);
+    }
+    if (note) box.append(document.createTextNode(note));
+  }
+
+  /** Put the link in a selectable field: the fallback when copying fails. */
+  showShareOutput(text) {
+    this.el.shareOut.value = text;
+    this.el.shareOutRow.hidden = !text;
+  }
+
+  /** Clipboard API first, then the old selection route. True if either worked. */
+  async copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      /* no permission, not focused, or no API: fall through */
+    }
+    try {
+      this.el.shareOut.value = text;
+      this.el.shareOutRow.hidden = false;
+      this.el.shareOut.focus();
+      this.el.shareOut.select();
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Ask before importing a pack that arrived by link: it is from a stranger.
+   * Resolves true only for an explicit Import; Cancel, Escape, or a second
+   * link arriving meanwhile resolve false. Falls back to window.confirm where
+   * <dialog> is missing (very old WebViews).
+   */
+  confirmSharedPack({ name, lines }) {
+    const dlg = this.el.shareConfirm;
+    if (typeof dlg.showModal !== 'function') {
+      return Promise.resolve(window.confirm(
+        `Import a shared pack?\n\n${name}\n${lines.map((l) => '\u2022 ' + l.text).join('\n')}`));
+    }
+    this._shareConfirmDone?.(false);
+    this.el.shareConfirmName.textContent = name;
+    const list = this.el.shareConfirmList;
+    list.replaceChildren();
+    for (const l of lines) {
+      const li = document.createElement('li');
+      li.textContent = l.text;
+      if (l.warn) li.className = 'warn';
+      list.append(li);
+    }
+    return new Promise((resolve) => {
+      const done = (ok) => {
+        if (this._shareConfirmDone !== done) return;
+        this._shareConfirmDone = null;
+        this.el.shareConfirmOk.onclick = null;
+        this.el.shareConfirmCancel.onclick = null;
+        dlg.onclose = null;
+        if (dlg.open) dlg.close();
+        resolve(ok);
+      };
+      this._shareConfirmDone = done;
+      this.el.shareConfirmOk.onclick = () => done(true);
+      this.el.shareConfirmCancel.onclick = () => done(false);
+      dlg.onclose = () => done(false);   // Escape
+      if (!dlg.open) dlg.showModal();
+      this.el.shareConfirmCancel.focus();
+    });
   }
 
   /* --------------------------------------------------------------- explore */
@@ -283,13 +671,206 @@ export class UI {
       drop.setAttribute('aria-label', `Remove ${loc.name}`);
       drop.addEventListener('click', () => this.h.onRemoveSaved?.(i));
 
-      li.append(go, drop);
+      const bind = document.createElement('button');
+      bind.type = 'button';
+      bind.className = 'mini bind';
+      bind.textContent = 'Bind\u2026';
+      bind.title = `Bind a theme or loops to ${loc.name}`;
+      bind.addEventListener('click', () => this.h.onBindSaved?.(i));
+
+      li.append(go, bind, drop);
       list.append(li);
     });
   }
 
   setPackHint(text) {
     this.el.packHint.textContent = text;
+  }
+
+  /** Fill the "Load an example…" selector from public/packs/index.json. */
+  setExamplePacks(list) {
+    const sel = this.el.examplePacks;
+    const placeholder = sel.options[0];
+    sel.replaceChildren(placeholder);
+    for (const p of list) {
+      const opt = document.createElement('option');
+      opt.value = p.file;
+      opt.textContent = p.name;
+      if (p.blurb) opt.title = p.blurb;
+      sel.append(opt);
+    }
+    sel.selectedIndex = 0;
+  }
+
+  /**
+   * The pack manager: imported themes (each removable), the tag-edit count
+   * with "Reset all", and a one-line summary. Names come from packs, so they
+   * only ever go in through textContent.
+   */
+  renderPackManager({ themes = [], tagEdits = 0, cues = 0, places = 0 } = {}) {
+    const plural = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
+    this.el.pmSummary.textContent =
+      `${plural(themes.length, 'imported theme')}, ${plural(cues, 'cue')}, ` +
+      `${plural(places, 'saved place')}, ${plural(tagEdits, 'tag edit')}.`;
+
+    const list = this.el.pmThemes;
+    list.replaceChildren();
+    if (!themes.length) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = 'No imported themes.';
+      list.append(li);
+    }
+    for (const t of themes) {
+      const li = document.createElement('li');
+      const info = document.createElement('span');
+      info.className = 'go pm-theme';
+      const title = document.createElement('span');
+      title.textContent = t.name;
+      const where = document.createElement('span');
+      where.className = 'where';
+      where.textContent = t.pinnedBy
+        ? `${t.id} · held by ${plural(t.pinnedBy, 'cue')}`
+        : t.id;
+      info.append(title, where);
+
+      const drop = document.createElement('button');
+      drop.type = 'button';
+      drop.className = 'drop';
+      drop.textContent = '×';
+      drop.title = `Remove theme ${t.name}`;
+      drop.setAttribute('aria-label', `Remove theme ${t.name}`);
+      drop.addEventListener('click', () => this.h.onThemeRemove?.(t.id));
+
+      li.append(info, drop);
+      list.append(li);
+    }
+
+    this.el.pmTags.textContent = tagEdits
+      ? `${plural(tagEdits, 'tag edit')}.` : 'No tag edits.';
+    this.el.pmTagReset.disabled = !tagEdits;
+  }
+
+  /* ------------------------------------------------------------ cue editor */
+
+  /**
+   * Show the editor for one place. `draft` is { name, lat, lng, radius,
+   * theme, presets, editing, where }. The coordinates stay here, for the radar
+   * circle, until main.js is told to save.
+   */
+  openCueEditor(draft) {
+    const el = this.el;
+    el.cueEditorTitle.textContent = draft.editing
+      ? `Edit \u201c${draft.editing}\u201d`
+      : 'Bind something to this place';
+    el.cueEditorWhere.textContent = draft.where || '';
+    el.cueName.value = draft.name || '';
+
+    const radius = Math.min(CUE_RADIUS_MAX, Math.max(CUE_RADIUS_MIN, draft.radius || 150));
+    el.cueRadius.value = String(radiusToSlider(radius));
+    el.cueRadiusOut.textContent = formatMetres(radius);
+
+    this._fillCueThemes(draft.theme);
+    const on = new Set(draft.presets || []);
+    for (const box of el.cuePresets.querySelectorAll('input')) box.checked = on.has(box.value);
+
+    el.cueDelete.hidden = !draft.editing;
+    this.setCueEditorHint('');
+    this._cueDraft = { lat: draft.lat, lng: draft.lng, radius };
+    el.cueEditor.hidden = false;
+    el.cueEditor.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    el.cueName.focus({ preventScroll: true });
+  }
+
+  closeCueEditor() {
+    this.el.cueEditor.hidden = true;
+    this._cueDraft = null;
+    this.setCueEditorHint('');
+  }
+
+  setCueEditorHint(text) {
+    this.el.cueEditorHint.textContent = text || '';
+  }
+
+  /**
+   * Every cue in the pack: name, strength, its condition in words, and
+   * Edit/Delete for the ones made here. Cues from a pack are read-only.
+   * Rebuilt only when the list changes; strengths go through setCueStrengths.
+   */
+  renderCueList(cues) {
+    const list = this.el.cueList;
+    list.replaceChildren();
+    this._cueRows = [];
+
+    if (!cues.length) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = 'No cues yet. Bind something to a saved place.';
+      list.append(li);
+      return;
+    }
+
+    for (const cue of cues) {
+      const li = document.createElement('li');
+      li.className = 'cue-row';
+
+      const head = document.createElement('span');
+      head.className = 'cue-head';
+      const chip = document.createElement('span');
+      chip.className = 'cue-chip';
+      chip.textContent = cue.name;
+      const pct = document.createElement('span');
+      pct.className = 'cue-pct';
+      head.append(chip, pct);
+
+      const side = document.createElement('span');
+      side.className = 'cue-actions';
+      if (cue.editable) {
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'mini';
+        edit.textContent = 'Edit';
+        edit.addEventListener('click', () => this.h.onEditCue?.(cue.name));
+        side.append(edit);
+      } else {
+        // Hand-written cues cannot be edited here, but they can be removed.
+        const tag = document.createElement('span');
+        tag.className = 'from-pack';
+        tag.textContent = 'from pack';
+        side.append(tag);
+      }
+      if (Number.isInteger(cue.index) && cue.index >= 0) {
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'mini';
+        del.textContent = cue.editable ? 'Delete' : 'Remove';
+        del.setAttribute('aria-label', `${del.textContent} cue ${cue.name}`);
+        del.addEventListener('click', () => this.h.onCueRemove?.(cue.index));
+        side.append(del);
+      }
+
+      const where = document.createElement('span');
+      where.className = 'where';
+      where.textContent = [cue.description, cue.does].filter(Boolean).join(' \u00b7 ');
+
+      li.append(head, side, where);
+      list.append(li);
+      this._cueRows.push({ chip, pct });
+      this._setCueStrength(this._cueRows.length - 1, cue.strength ?? 0);
+    }
+  }
+
+  /** Strengths in the same order as the last renderCueList call. */
+  setCueStrengths(strengths) {
+    strengths.forEach((s, i) => this._setCueStrength(i, s));
+  }
+
+  _setCueStrength(i, strength) {
+    const row = this._cueRows[i];
+    if (!row) return;
+    const s = Math.min(1, Math.max(0, strength || 0));
+    row.chip.style.setProperty('--strength', s.toFixed(2));
+    row.pct.textContent = `${Math.round(s * 100)}%`;
   }
 
   /* -------------------------------------------------------------- setters */
@@ -337,6 +918,8 @@ export class UI {
    * selector being ignored — or as nothing happening at all.
    */
   setActiveTheme(theme, pin) {
+    this._setAccent(theme?.color);
+
     const el = this.el.themeHeld;
     if (!el) return;
 
@@ -351,13 +934,39 @@ export class UI {
     this.el.theme.classList.add('overridden');
   }
 
+  /**
+   * The accent follows the playing theme's colour (C4.3). The value is
+   * re-checked here as `#rrggbb` — code themes never pass through
+   * validateSpec — and reaches CSS only as a custom property value.
+   * Anything else falls back to the default accent.
+   */
+  _setAccent(color) {
+    const hex = isThemeColor(color) ? color.toLowerCase() : DEFAULT_ACCENT;
+    if (hex === this._accent.hex) return;
+    const now = performance.now();
+    this._accent = { hex, from: this._accentRgb(now), to: hexToRgb(hex), t0: now };
+    document.documentElement.style.setProperty('--accent', hex);
+  }
+
+  /** The radar's accent right now, mid-fade included, as [r, g, b]. */
+  _accentRgb(now = performance.now()) {
+    const { from, to, t0 } = this._accent;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const t = reduce ? 1 : Math.min(1, Math.max(0, (now - t0) / ACCENT_FADE_MS));
+    const k = t * t * (3 - 2 * t);   // eased at both ends, like CSS ease-in-out
+    return from.map((v, i) => Math.round(v + (to[i] - v) * k));
+  }
+
   setPosition(pos) {
     this.center = pos;
     this.heading = pos.heading ?? 0;
     this.el.coords.textContent = `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}`;
     this.el.speedOut.textContent = formatSpeed(pos.speed);
-    this.el.accuracyOut.textContent =
-      pos.accuracy == null ? '—' : `±${Math.round(pos.accuracy)} m`;
+    // Live and sim say whether GPS is fine or has dropped to coarse after
+    // standing still (geo.js); explore has no mode.
+    const acc = pos.accuracy == null ? '—' : `±${Math.round(pos.accuracy)} m`;
+    this.el.accuracyOut.textContent = pos.mode ? `${acc} · ${pos.mode}` : acc;
+    this.el.accuracyOut.dataset.mode = pos.mode || '';
   }
 
   setPlaces(places, radius) {
@@ -365,10 +974,20 @@ export class UI {
     this.radius = radius || this.radius;
   }
 
-  setScene({ name, meta, mood, tags, placeCount, band, cues }) {
+  setScene({ name, meta, why, mood, tags, placeCount, band, cues }) {
     if (name) this.el.sceneName.textContent = name;
     if (meta) this.el.sceneMeta.textContent = meta;
-    if (band) this.el.bandBadge.textContent = band;
+    // "Why this music" (C4.1). textContent: place names can come from packs.
+    // Written only when it changes, since setScene runs every replan tick.
+    if (why !== undefined && why !== this._why) {
+      this._why = why;
+      this.el.sceneWhy.textContent = why;
+      this.el.sceneWhy.hidden = !why;
+    }
+    if (band && band !== this._band) {
+      this._band = band;
+      this._renderBand();
+    }
 
     if (mood) {
       for (const dim of DIMS) {
@@ -586,10 +1205,12 @@ export class UI {
     ctx.clearRect(0, 0, size, size);
 
     const level = this.engine?.level?.() ?? 0;
+    // The playing theme's colour, read once per frame so a handover fades.
+    const accent = this._accentRgb().join(', ');
 
     // Backdrop glow that breathes with the music.
     const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.9);
-    glow.addColorStop(0, `rgba(110, 231, 208, ${0.05 + level * 0.11})`);
+    glow.addColorStop(0, `rgba(${accent}, ${0.05 + level * 0.11})`);
     glow.addColorStop(0.55, 'rgba(138, 164, 255, 0.035)');
     glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = glow;
@@ -617,8 +1238,8 @@ export class UI {
     this._sweep = (this._sweep + 0.004) % (Math.PI * 2);
     const sweepGrad = ctx.createLinearGradient(
       cx, cy, cx + Math.cos(this._sweep) * R, cy + Math.sin(this._sweep) * R);
-    sweepGrad.addColorStop(0, 'rgba(110, 231, 208, 0.16)');
-    sweepGrad.addColorStop(1, 'rgba(110, 231, 208, 0)');
+    sweepGrad.addColorStop(0, `rgba(${accent}, 0.16)`);
+    sweepGrad.addColorStop(1, `rgba(${accent}, 0)`);
     ctx.strokeStyle = sweepGrad;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -627,7 +1248,8 @@ export class UI {
     ctx.stroke();
 
     this._drawPlaces(ctx, cx, cy, R);
-    this._drawSelf(ctx, cx, cy, level);
+    this._drawCueRadius(ctx, cx, cy, R);
+    this._drawSelf(ctx, cx, cy, level, accent);
 
     // Range label.
     ctx.fillStyle = 'rgba(143, 161, 184, 0.55)';
@@ -696,17 +1318,61 @@ export class UI {
     }
   }
 
-  _drawSelf(ctx, cx, cy, level) {
+  /**
+   * While the cue editor is open, the cue's radius on the same scale as the
+   * places: solid where it plays in full, dashed where it has faded out.
+   */
+  _drawCueRadius(ctx, cx, cy, R) {
+    const draft = this._cueDraft;
+    if (!draft || !this.center) return;
+
+    const mPerDegLat = 111320;
+    const mPerDegLng = Math.max(1, 111320 * Math.cos((this.center.lat * Math.PI) / 180));
+    const scale = R / this.radius;
+    const x = cx + (draft.lng - this.center.lng) * mPerDegLng * scale;
+    const y = cy - (draft.lat - this.center.lat) * mPerDegLat * scale;
+    const r = draft.radius * scale;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 178, 107, 0.07)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 178, 107, 0.75)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.setLineDash([4, 5]);
+    ctx.beginPath();
+    ctx.arc(x, y, r * 2, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 178, 107, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 178, 107, 0.9)';
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255, 178, 107, 0.85)';
+    ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(formatMetres(draft.radius), x, y - Math.min(r, R) - 6);
+    ctx.restore();
+  }
+
+  _drawSelf(ctx, cx, cy, level, accent) {
     const pulse = 7 + level * 9;
 
     ctx.beginPath();
     ctx.arc(cx, cy, pulse * 2.1, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(110, 231, 208, ${0.07 + level * 0.13})`;
+    ctx.fillStyle = `rgba(${accent}, ${0.07 + level * 0.13})`;
     ctx.fill();
 
     ctx.beginPath();
     ctx.arc(cx, cy, 5, 0, Math.PI * 2);
-    ctx.fillStyle = '#6ee7d0';
+    ctx.fillStyle = `rgb(${accent})`;
     ctx.fill();
 
     // Heading arrow, only meaningful when we actually have a bearing.
@@ -720,7 +1386,7 @@ export class UI {
       ctx.lineTo(7, -5);
       ctx.lineTo(7, 5);
       ctx.closePath();
-      ctx.fillStyle = 'rgba(110, 231, 208, 0.85)';
+      ctx.fillStyle = `rgba(${accent}, 0.85)`;
       ctx.fill();
       ctx.restore();
     }
@@ -729,10 +1395,31 @@ export class UI {
 
 /* ------------------------------------------------------------------ utils */
 
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
 function hexToRgba(hex, alpha) {
   const h = hex.replace('#', '');
   const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+function sliderToRadius(v) {
+  const t = Math.min(1, Math.max(0, v / CUE_SLIDER_MAX));
+  const r = CUE_RADIUS_MIN * (CUE_RADIUS_MAX / CUE_RADIUS_MIN) ** t;
+  const step = r < 200 ? 5 : r < 1000 ? 10 : 50;
+  return Math.min(CUE_RADIUS_MAX, Math.max(CUE_RADIUS_MIN, Math.round(r / step) * step));
+}
+
+function radiusToSlider(r) {
+  const t = Math.log(r / CUE_RADIUS_MIN) / Math.log(CUE_RADIUS_MAX / CUE_RADIUS_MIN);
+  return Math.round(Math.min(1, Math.max(0, t)) * CUE_SLIDER_MAX);
+}
+
+function formatMetres(m) {
+  return m >= 1000 ? `${(m / 1000).toFixed(m >= 2000 ? 1 : 2)} km` : `${Math.round(m)} m`;
 }
 
 function formatSpeed(mps) {

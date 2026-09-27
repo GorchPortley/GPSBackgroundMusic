@@ -49,6 +49,7 @@ export const videogame = {
   name: 'Video Game',
   available: true,
   description: 'Chiptune-adjacent loops, bold melodies, overworld energy.',
+  color: '#ff7eb6',
 
   /* ------------------------------------------------------------------ plan */
 

@@ -13,6 +13,9 @@
  * sequence) waits for the next 4-bar phrase boundary.
  */
 
+import { Ambience } from './ambience.js';
+import { sweepVoice } from './voices.js';
+
 export const STEPS_PER_BAR = 16;   // 16th notes in 4/4
 export const BARS_PER_PHRASE = 4;
 const STEPS_PER_PHRASE = STEPS_PER_BAR * BARS_PER_PHRASE;
@@ -24,11 +27,50 @@ const START_DELAY_S = 0.12;
 /** How fast continuous parameters chase their target (seconds). */
 const MORPH_TC = 2.5;
 const REVERB_CROSSFADE_S = 3.0;
+/** Per-step fraction of the way the tempo moves toward its target. */
+const BPM_EASE = 0.02;
+
+/**
+ * Fixed gain of the ambience bus. With the per-generator maxima in
+ * ambience.js this keeps every bed at level 1 at once more than 18 dB under
+ * the music's peak (measured through the whole chain at the loudest trim).
+ * Ambience is quiet by design — the music must not move when it arrives.
+ */
+const AMBIENCE_BUS = 0.033;
+
+/**
+ * Spatial cues (cues.js `spatial: true`): each gets its own StereoPannerNode
+ * into the dry bus, and its pan glides with this time constant between
+ * replans rather than jumping per note. A panner whose cue has been gone from
+ * every live plan this long is disconnected — long enough for the last notes'
+ * tails to finish.
+ */
+const CUE_PAN_TC = 0.8;
+const CUE_PAN_MAX = 0.7;
+const CUE_PANNER_GRACE_S = 20;
+
+/**
+ * Handover (C3.6): when a change of theme or tonic is about to commit, one beat
+ * before the downbeat a noise riser plays into it and the reverb return
+ * blooms by BLOOM_GAIN for BLOOM_HOLD_S, so the cut sounds chosen. The riser
+ * is quiet (it rides on top of a busy bar); the bloom rises quickly and falls
+ * back gently to whatever the current plan's reverb mix is by then.
+ */
+const SWELL_STEPS = 4;          // one beat of 16ths before the commit
+const SWELL_GAIN = 0.04;
+const SWELL_FROM = 400;
+const SWELL_TO = 6000;
+const BLOOM_GAIN = 1.4;
+const BLOOM_HOLD_S = 2.5;
+const BLOOM_RISE_TC = 0.25;
+const BLOOM_FALL_TC = 0.6;
 
 export class AudioEngine {
   constructor() {
     this.ctx = null;
     this.running = false;
+    this.hasWorklets = false;
+    this._init = null;
 
     // A plan and the theme that produced it are one unit and must never be
     // separated: a theme's step() reads fields only its own plan() writes, so
@@ -37,6 +79,8 @@ export class AudioEngine {
     this.plan = null;
     this.stepFn = null;
     this._pending = null;
+    // Optional listener, called with the plan each time one commits.
+    this.onCommit = null;
 
     this._step = 0;
     this._nextStepTime = 0;
@@ -47,6 +91,17 @@ export class AudioEngine {
     this._reverbCache = new Map();
     this._reverbSlot = 'a';
     this._reverbSeconds = 0;
+
+    /** Spatial cue name → { node: StereoPannerNode, seen: ctx time }. */
+    this._cuePanners = new Map();
+
+    // Handover swell (C3.6). `_reverbMix` is the current plan's reverb return
+    // target; `_bloom` ({ at, until } in ctx time) multiplies it for a while.
+    // `_swell` is the riser scheduled for the commit at `commitStep`, kept so
+    // it can be faded out if that commit is superseded before it lands.
+    this._reverbMix = 0.5;
+    this._bloom = null;
+    this._swell = null;
   }
 
   /* ----------------------------------------------------------- lifecycle */
@@ -61,12 +116,12 @@ export class AudioEngine {
       /* not supported here; nothing to fall back to */
     }
 
-    if (!this.ctx) {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) throw new Error('This browser has no Web Audio support.');
-      this.ctx = new Ctx({ latencyHint: 'playback' });
-      this._build();
+    // Memoised: a second start() while the first is still loading the
+    // worklet must wait for the same graph, not build another.
+    if (!this._init) {
+      this._init = this._createContext().catch((e) => { this._init = null; this.ctx = null; throw e; });
     }
+    await this._init;
     if (this.ctx.state === 'suspended') await this.ctx.resume();
 
     if (this.running) return;
@@ -79,7 +134,37 @@ export class AudioEngine {
 
     this._step = 0;
     this._nextStepTime = now + START_DELAY_S;
+    this.ambience.start();
     this._timer = setInterval(() => this._tick(), LOOKAHEAD_MS);
+  }
+
+  async _createContext() {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) throw new Error('This browser has no Web Audio support.');
+    // Not published as this.ctx until the graph is built, so applyPlan()
+    // and friends keep treating the engine as unstarted during the await.
+    const ctx = new Ctx({ latencyHint: 'playback' });
+    // Ask to resume while still inside the user gesture; iOS may refuse a
+    // resume() that only happens after the await below.
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+    // Worklet voices (the Karplus–Strong string) need their module loaded
+    // before any node is made. AudioWorklet needs a secure context (HTTPS,
+    // localhost, or the APK's appassets origin); if it is missing or the
+    // load fails, voices fall back to their oscillator versions and the app
+    // still plays. Resolved against this file, so it works under any root
+    // (dev server and appassets both serve it at /src/audio/worklets/ks.js).
+    this.hasWorklets = false;
+    try {
+      if (ctx.audioWorklet) {
+        await ctx.audioWorklet.addModule(new URL('./worklets/ks.js', import.meta.url).href);
+        this.hasWorklets = true;
+      }
+    } catch (e) {
+      console.warn('AudioWorklet unavailable; string voice falls back to pluck.', e);
+    }
+    this.ctx = ctx;
+    this._build();
   }
 
   /** Fade out, then park the scheduler. Safe to call repeatedly. */
@@ -91,6 +176,8 @@ export class AudioEngine {
     this.master.gain.cancelScheduledValues(now);
     this.master.gain.setValueAtTime(this.master.gain.value, now);
     this.master.gain.linearRampToValueAtTime(0.0001, now + 1.0);
+    // Sources stop once the master has faded, and then disconnect.
+    this.ambience.stop(now + 1.02);
 
     clearInterval(this._timer);
     this._timer = null;
@@ -104,6 +191,22 @@ export class AudioEngine {
     if (this.ctx && this.running) {
       this.master.gain.setTargetAtTime(this._volume, this.ctx.currentTime, 0.1);
     }
+  }
+
+  /**
+   * Ambience levels, 0..1 by generator (birds, water, traffic, murmur, rain):
+   * main.js has already folded in the scene, the slider and the theme's
+   * `ambience`. Each glides (ambience.js AMBIENCE_TC), so this is safe to
+   * call every replan.
+   */
+  setAmbience(levels) {
+    if (!this.ambience) return;
+    this.ambience.setLevels(levels);
+  }
+
+  /** Debug: live node / grain / noise-source counts on the ambience bus. */
+  ambienceStats() {
+    return this.ambience ? { ...this.ambience.stats } : null;
   }
 
   /* ---------------------------------------------------------------- graph */
@@ -216,6 +319,7 @@ export class AudioEngine {
 
     this._buildDrone();
     this._buildAir();
+    this._buildAmbience();
 
     /** Bundle handed to every voice. */
     this.io = {
@@ -224,6 +328,9 @@ export class AudioEngine {
       reverb: this.reverbBus,
       delay: this.delayBus,
       noiseBuffer: this.noiseBuffer,
+      hasWorklets: !!this.hasWorklets,
+      // A spatial cue's own panner (or null, meaning "use dry"); see _applyCuePans.
+      cueOut: (name) => this._cuePanners.get(name)?.node ?? null,
     };
   }
 
@@ -294,6 +401,21 @@ export class AudioEngine {
     lfo.connect(depth).connect(this.airFilter.frequency);
     lfo.start();
     this.airLfoDepth = depth;
+  }
+
+  /**
+   * The place, literally (ambience.js): its own bus into the dry path, with a
+   * half-strength send into the room so it sits in the same space.
+   */
+  _buildAmbience() {
+    const ctx = this.ctx;
+    this.ambienceGain = ctx.createGain();
+    this.ambienceGain.gain.value = AMBIENCE_BUS;
+    this.ambienceGain.connect(this.dry);
+    const send = ctx.createGain();
+    send.gain.value = 0.5;
+    this.ambienceGain.connect(send).connect(this.reverbBus);
+    this.ambience = new Ambience(ctx, this.ambienceGain);
   }
 
   /* --------------------------------------------------------------- buffers */
@@ -380,9 +502,19 @@ export class AudioEngine {
       // reassignment would let the very next tick quietly downgrade a jump
       // back to a full phrase — which is the slow handover it was meant to fix.
       this._pending = { plan, stepFn, urgent: urgent || !!this._pending?.urgent };
+      // A riser already heading for this seam stays only if what will land
+      // there is still a handover.
+      if (!isHandover(this.plan, plan)) this._cancelSwell();
     } else {
       // Same harmony and same theme, new shading — keep the current phrase and
       // take everything else immediately.
+      //
+      // A change still waiting for its seam has been overtaken: the world is
+      // back to what is already playing, so it must not land (nor its riser).
+      if (this._pending) {
+        this._pending = null;
+        this._cancelSwell();
+      }
       this.plan = { ...plan, root: this.plan.root, scale: this.plan.scale,
         progression: this.plan.progression, barsPerChord: this.plan.barsPerChord };
       this.stepFn = stepFn;
@@ -399,7 +531,8 @@ export class AudioEngine {
     // Ramp rather than jump: switching theme mid-walk should not click.
     set(this.themeTrim.gain, plan.trim ?? 1, 0.6);
 
-    set(this.reverbReturn.gain, plan.fx.reverbMix);
+    this._reverbMix = plan.fx.reverbMix;
+    this._setReverbReturn();
     set(this.delayReturn.gain, plan.fx.delayMix);
     set(this.delayFeedback.gain, Math.min(0.72, plan.fx.delayFeedback));
     set(this.delayTone.frequency, plan.fx.delayTone, 1.5);
@@ -410,12 +543,140 @@ export class AudioEngine {
     set(this.airGain.gain, plan.layers.air);
     set(this.airFilter.frequency, plan.timbre.airCutoff, 3.5);
     set(this.airFilter.Q, plan.timbre.airQ ?? 0.9, 3);
+
+    this._applyCuePans(plan);
+  }
+
+  /**
+   * `plan.cuePans` — [{ name, pan }] for spatial cues — is continuous: each
+   * cue's panner glides to its new pan now. Panners are made on first sight
+   * and disconnected once no live plan (this one, the sounding one, or the one
+   * waiting for a boundary) has mentioned the cue for CUE_PANNER_GRACE_S.
+   */
+  _applyCuePans(plan) {
+    const ctx = this.ctx;
+    if (!ctx.createStereoPanner) return;
+    const now = ctx.currentTime;
+
+    for (const { name, pan } of plan.cuePans || []) {
+      const p = Math.max(-CUE_PAN_MAX, Math.min(CUE_PAN_MAX, Number.isFinite(pan) ? pan : 0));
+      let entry = this._cuePanners.get(name);
+      if (!entry) {
+        // New: start where it should be. The cue fades in from silence anyway.
+        const node = ctx.createStereoPanner();
+        node.pan.value = p;
+        node.connect(this.dry);
+        entry = { node, seen: now };
+        this._cuePanners.set(name, entry);
+      } else {
+        entry.node.pan.setTargetAtTime(p, now, CUE_PAN_TC);
+      }
+      entry.seen = now;
+    }
+
+    // Plans still being stepped keep their panners alive too.
+    for (const live of [this.plan, this._pending?.plan]) {
+      for (const { name } of live?.cuePans || []) {
+        const entry = this._cuePanners.get(name);
+        if (entry) entry.seen = now;
+      }
+    }
+
+    for (const [name, entry] of this._cuePanners) {
+      if (now - entry.seen > CUE_PANNER_GRACE_S) {
+        entry.node.disconnect();
+        this._cuePanners.delete(name);
+      }
+    }
+  }
+
+  /**
+   * The one place reverbReturn.gain is automated. Its target is the plan's
+   * reverb mix, times BLOOM_GAIN while a handover bloom is on; the fall back
+   * is scheduled at the bloom's end, to the mix as it is *now*. Any later
+   * replan lands here too and reschedules the lot, so the bloom and the
+   * plan's own glide never leave a stale target behind.
+   */
+  _setReverbReturn() {
+    const g = this.reverbReturn.gain;
+    const now = this.ctx.currentTime;
+    const mix = this._reverbMix;
+    const b = this._bloom;
+    g.cancelScheduledValues(now);
+    if (b && b.until > now) {
+      if (b.at > now) g.setTargetAtTime(mix, now, MORPH_TC);
+      g.setTargetAtTime(mix * BLOOM_GAIN, Math.max(now, b.at), BLOOM_RISE_TC);
+      g.setTargetAtTime(mix, b.until, BLOOM_FALL_TC);
+    } else if (b && now < b.until + 4 * BLOOM_FALL_TC) {
+      // Still falling back: keep the fall's pace rather than the slow morph.
+      g.setTargetAtTime(mix, now, BLOOM_FALL_TC);
+    } else {
+      this._bloom = null;
+      g.setTargetAtTime(mix, now, MORPH_TC);
+    }
+  }
+
+  /**
+   * One beat before a handover lands: a noise riser into the downbeat and a
+   * reverb bloom. The riser goes through its own pair of gains (dry, reverb
+   * send) so _cancelSwell can fade it if the change is overtaken.
+   */
+  _startSwell(time, commitStep) {
+    const ctx = this.ctx;
+    // Exactly as far as the commit step will be: the tempo eases a little
+    // every step (see the end of _tick), so this is not quite 4 × stepDur.
+    let dur = 0;
+    for (let k = 0, bpm = this._bpm; k < SWELL_STEPS; k++) {
+      bpm += (this._targetBpm - bpm) * BPM_EASE;
+      dur += 60 / bpm / 4;
+    }
+    const dry = ctx.createGain();
+    const rev = ctx.createGain();
+    dry.connect(this.dry);
+    rev.connect(this.reverbBus);
+    sweepVoice({ ...this.io, dry, reverb: rev }, {
+      time, gain: SWELL_GAIN, from: SWELL_FROM, to: SWELL_TO, dur,
+    });
+    this._swell = { commitStep, time, commitTime: time + dur, nodes: [dry, rev] };
+    // Gone well after the riser and its send have finished.
+    const ms = Math.max(0, time + dur + 1 - ctx.currentTime) * 1000;
+    setTimeout(() => { try { dry.disconnect(); rev.disconnect(); } catch { /* gone */ } }, ms);
+
+    this._bloom = { at: time, until: time + BLOOM_HOLD_S };
+    this._setReverbReturn();
+    this.swellLog?.push({ time, commitTime: time + dur, commitStep });
+  }
+
+  /** The handover this riser was for will not happen: fade it and the bloom. */
+  _cancelSwell() {
+    const s = this._swell;
+    if (!s || !this.ctx) return;
+    this._swell = null;
+    const now = this.ctx.currentTime;
+    for (const n of s.nodes) {
+      n.gain.cancelScheduledValues(now);
+      n.gain.setTargetAtTime(0, now, 0.03);
+    }
+    if (this._bloom?.at === s.time) {
+      this._bloom = null;
+      this._setReverbReturn();
+    }
+    this.swellLog?.push({ cancelled: true, at: now, commitStep: s.commitStep });
+  }
+
+  /** Debug: live spatial-cue panners, name → current pan. */
+  cuePanStats() {
+    return Object.fromEntries([...this._cuePanners].map(([name, { node }]) => [name, node.pan.value]));
   }
 
   /** Take on the parts that can only change at a musical seam. */
   _commit(plan, stepFn) {
     this.plan = plan;
     this.stepFn = stepFn;
+    this._swell = null;   // landed; the bloom runs out on its own
+    // Tell the UI what is sounding now (C4.3: the accent turns here). A
+    // listener throwing must not stop the commit.
+    try { this.onCommit?.(plan); } catch (err) { console.warn('onCommit:', err); }
     if (!this.ctx) return;
 
     const now = this.ctx.currentTime;
@@ -441,6 +702,7 @@ export class AudioEngine {
 
   _tick() {
     const ctx = this.ctx;
+    this.ambience.schedule(ctx.currentTime + SCHEDULE_AHEAD_S);
     while (this._nextStepTime < ctx.currentTime + SCHEDULE_AHEAD_S) {
       const step = this._step;
 
@@ -451,8 +713,20 @@ export class AudioEngine {
         this._pending = null;
       }
 
+      // Steps until the pending change lands (1..boundary), for fills; absent
+      // when nothing is waiting.
+      const stepsToCommit = this._pending ? boundary - (step % boundary) : undefined;
+
       if (this.plan && this.stepFn) {
         const stepDur = 60 / this._bpm / 4;
+
+        // One beat out from a handover: riser and bloom. Keyed on the commit
+        // step so a seam gets at most one, whatever replans arrive meanwhile.
+        if (stepsToCommit === SWELL_STEPS && isHandover(this.plan, this._pending.plan) &&
+            this._swell?.commitStep !== step + SWELL_STEPS) {
+          this._startSwell(this._nextStepTime, step + SWELL_STEPS);
+        }
+
         // A theme throwing must not take the transport down with it — that
         // matters most for themes someone else wrote.
         try {
@@ -465,6 +739,7 @@ export class AudioEngine {
             bar: Math.floor(step / STEPS_PER_BAR),
             barInPhrase: Math.floor(step / STEPS_PER_BAR) % BARS_PER_PHRASE,
             phrase: Math.floor(step / STEPS_PER_PHRASE),
+            stepsToCommit,
           });
         } catch (err) {
           if (!this._stepErrorLogged) {
@@ -475,7 +750,7 @@ export class AudioEngine {
       }
 
       // Ease toward the target tempo so speeding up feels like acceleration.
-      this._bpm += (this._targetBpm - this._bpm) * 0.02;
+      this._bpm += (this._targetBpm - this._bpm) * BPM_EASE;
       this._nextStepTime += 60 / this._bpm / 4;
       this._step++;
     }
@@ -511,4 +786,16 @@ function isDiscreteChange(a, b) {
     a.scale !== b.scale ||
     a.barsPerChord !== b.barsPerChord ||
     a.progression.join() !== b.progression.join();
+}
+
+/**
+ * Is this discrete change a *handover* — a new theme or a new tonic — rather
+ * than a re-colouring within one (mode, chord sequence, chord rate)? Only
+ * handovers get the riser and bloom. Mode alone is left out on purpose: it
+ * follows the brightness of the scene, so it flips on its own while the mood
+ * settles after a jump and now and then on a walk — a riser each time would
+ * turn a shading into an event and make the real handovers mean less.
+ */
+function isHandover(a, b) {
+  return a.themeId !== b.themeId || a.root !== b.root;
 }

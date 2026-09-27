@@ -6,7 +6,11 @@
  * seeding the composer, and a human-readable name for the HUD.
  */
 
-import { canonicalType, DIMS, IGNORED_TYPES, NEUTRAL, profileFor } from './tags.js';
+import {
+  canonicalType, countedPlaces, DIMS, IGNORED_TYPES, NEUTRAL, placeLabel, profileFor,
+} from './tags.js';
+import { weatherFactors } from './weather.js';
+import { terrainFactors } from './elevation.js';
 
 /** A place's own type counts more than the extra types Google attaches. */
 const PRIMARY_TYPE_WEIGHT = 1.0;
@@ -71,6 +75,9 @@ export function analyzePlaces(places, radius) {
   const catWeights = new Map();
   const unknown = new Set();
   const contributions = [];
+  // Distinct places per canonical type, for the "why this music" line (C4.1):
+  // a place tagged both `italian_restaurant` and `restaurant` is one restaurant.
+  const placesByType = {};
   let total = 0;
 
   // Nearest first, so the closest instance of a type is the one that gets full
@@ -83,6 +90,7 @@ export function analyzePlaces(places, radius) {
     if (geoW <= 0) continue;
 
     const seen = new Set();
+    const counted = new Set();
     for (const type of place.types || []) {
       if (seen.has(type) || IGNORED_TYPES.has(type)) continue;
       seen.add(type);
@@ -96,6 +104,10 @@ export function analyzePlaces(places, radius) {
       // Count repeats by canonical type, so `italian_restaurant` and
       // `pizza_restaurant` are two restaurants rather than one of each.
       const canonical = canonicalType(type) || type;
+      if (!counted.has(canonical)) {
+        counted.add(canonical);
+        placesByType[canonical] = (placesByType[canonical] || 0) + 1;
+      }
       const occurrence = (typeCounts.get(canonical) || 0) + 1;
       typeCounts.set(canonical, occurrence);
 
@@ -138,6 +150,7 @@ export function analyzePlaces(places, radius) {
     totalWeight: total,
     urbanness: total / (total + URBAN_HALF_WEIGHT),
     placeCount: (places || []).length,
+    placesByType,
     unknownTypes: [...unknown],
   };
 }
@@ -217,10 +230,15 @@ export function timeBand(hour) {
 
 /**
  * Fold in the things that are true about *you* rather than about the map:
- * how built-up it is here, how fast you are travelling, and the hour.
+ * how built-up it is here, how fast you are travelling, the hour, and (when
+ * the weather toggle is on) the weather, and (when the hills toggle is on)
+ * whether you are climbing.
  *
  * @param {object} analysis result of analyzePlaces
- * @param {{speed?: number, hour?: number}} ctx speed in m/s
+ * @param {{speed?: number, hour?: number, weather?: object|null,
+ *   terrain?: object|null}} ctx speed in m/s; weather is weather.js's
+ *   `{ rainMmH, windKmh, cloudPct, isDay }`; terrain is elevation.js's
+ *   `{ grade, aboveM, … }`
  */
 export function contextualise(analysis, ctx = {}) {
   const mood = { ...analysis.mood };
@@ -247,6 +265,27 @@ export function contextualise(analysis, ctx = {}) {
 
   const band = timeBand(Number.isFinite(ctx.hour) ? ctx.hour : new Date().getHours());
   for (const [dim, delta] of Object.entries(band.mod)) mood[dim] += delta;
+
+  // Weather (C3.10): rain darkens and cools, overcast dims a little, wind
+  // opens the space. Factors are 0..1 (weather.js `weatherFactors`: rain ÷ 4
+  // mm/h, cloud ÷ 100 %, wind ÷ 40 km/h), and all zero with weather off, so
+  // this is a no-op then. Applied before the final clamp, like everything else.
+  const { rain01, cloud01, wind01 } = weatherFactors(ctx.weather);
+  mood.b -= 0.10 * rain01 + 0.05 * cloud01;
+  mood.w -= 0.05 * rain01;
+  mood.s += 0.08 * wind01;
+
+  // Hills (P3): climbing adds tension — the effort, not the altitude. climb01
+  // is the grade over the last ~250 m of travel, 0 at ≤ 2 % and 1 at ≥ 8 %
+  // (elevation.js `terrainFactors`). 0.10 at full is the same size as the
+  // weather's rain on brightness: enough to tip the harmony (a mood word and,
+  // often, a new sceneKey) without drowning the place, whose own tension
+  // spans ~0.2–0.8. Going down relaxes a little (a third as much), and being
+  // well above where you started opens the space a touch (0.04 at 150 m).
+  // All zero with the toggle off or on the flat.
+  const { climb01, descent01, high01 } = terrainFactors(ctx.terrain);
+  mood.t += 0.10 * climb01 - 0.03 * descent01;
+  mood.s += 0.04 * high01;
 
   for (const d of DIMS) mood[d] = clamp01(mood[d]);
   return { mood, motion, band };
@@ -333,6 +372,108 @@ export function sceneKey(mood, categories) {
   const q = DIMS.map((d) => Math.round(mood[d] * 4)).join('');
   const cats = (categories || []).slice(0, 2).map((c) => c.cat).join('-');
   return `${cats}:${q}`;
+}
+
+/* ------------------------------------------------------ why this music */
+
+/**
+ * The places doing most to push the mood away from neutral (C4.1): tags
+ * grouped by canonical type, ranked by `weight × |profile − NEUTRAL|₁`. A
+ * car park near a nightclub has weight but no opinion, so it ranks below it.
+ *
+ * @returns {Array<{type, count, weight, deviation, score}>} best first
+ */
+export function topContributors(analysis, n = 3) {
+  const groups = new Map();
+  for (const tag of analysis?.tags || []) {
+    const profile = profileFor(tag.type);
+    if (!profile) continue;
+    const type = canonicalType(tag.type) || tag.type;
+    const g = groups.get(type) || { type, weight: 0, profile };
+    g.weight += tag.weight;
+    groups.set(type, g);
+  }
+  return [...groups.values()]
+    .map(({ type, weight, profile }) => {
+      let deviation = 0;
+      for (const d of DIMS) deviation += Math.abs((profile[d] ?? NEUTRAL[d]) - NEUTRAL[d]);
+      return {
+        type,
+        count: analysis.placesByType?.[type] || 1,
+        weight,
+        deviation,
+        score: weight * deviation,
+      };
+    })
+    .filter((c) => c.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, n);
+}
+
+/** One word for each end of each mood dimension. */
+const MOOD_WORDS = {
+  e: ['calm', 'lively'],
+  b: ['dark', 'bright'],
+  d: ['sparse', 'busy'],
+  t: ['settled', 'tense'],
+  w: ['cool', 'warm'],
+  s: ['close', 'spacious'],
+};
+/** How far from 0.5 a dimension must sit before it is worth a word. */
+const MOOD_WORD_MIN = 0.1;
+
+/** "Busy and bright": the one or two dimensions furthest from neutral. */
+export function describeMood(mood) {
+  const words = DIMS
+    .map((d) => ({ d, dev: (mood?.[d] ?? NEUTRAL[d]) - NEUTRAL[d] }))
+    .filter(({ dev }) => Math.abs(dev) >= MOOD_WORD_MIN)
+    .sort((a, b) => Math.abs(b.dev) - Math.abs(a.dev))
+    .slice(0, 2)
+    .map(({ d, dev }) => MOOD_WORDS[d][dev > 0 ? 1 : 0]);
+  const text = words.length ? words.join(' and ') : 'balanced';
+  return text[0].toUpperCase() + text.slice(1);
+}
+
+/**
+ * The weather's share, named only when it moved the mood noticeably (a shift
+ * of ~0.03 or more in contextualise's terms). Empty with weather off.
+ */
+function weatherWords(weather) {
+  const { rain01, cloud01, wind01 } = weatherFactors(weather);
+  const words = [];
+  if (rain01 >= 0.3) words.push('rain');
+  else if (cloud01 >= 0.7) words.push('overcast');
+  if (wind01 >= 0.4) words.push('wind');
+  return words;
+}
+
+/**
+ * "Busy and bright because: 3 cafés, a bar, a station". Plain text — ui.js
+ * writes it with textContent. Falls back to naming the open ground when no
+ * tagged place is near; empty until there is an analysis at all.
+ *
+ * @param {object} mood      the mood being aimed at (after contextualise)
+ * @param {object} analysis  result of analyzePlaces
+ * @param {object|null} weather weather.js's current reading, or null when off
+ * @param {object|null} terrain elevation.js's reading, or null when off
+ */
+export function whyLine(mood, analysis, weather = null, terrain = null) {
+  if (!analysis || !mood) return '';
+  // Types that share an everyday name ("station" for train and transit
+  // stations) are one entry, so ask for a few spare and merge before cutting.
+  const byLabel = new Map();
+  for (const c of topContributors(analysis, 8)) {
+    const label = placeLabel(c.type);
+    const seen = byLabel.get(label);
+    if (seen) seen.count += c.count;
+    else if (byLabel.size < 3) byLabel.set(label, { type: c.type, count: c.count });
+  }
+  const extra = weatherWords(weather);
+  if (terrainFactors(terrain).climb01 >= 0.3) extra.push('climbing');
+  const tail = extra.length ? ` · ${extra.join(', ')}` : '';
+  if (!byLabel.size) return `${describeMood(mood)}: nothing tagged nearby${tail}`;
+  const places = [...byLabel.values()].map((c) => countedPlaces(c.type, c.count)).join(', ');
+  return `${describeMood(mood)} because: ${places}${tail}`;
 }
 
 /* ------------------------------------------------------------------ utils */

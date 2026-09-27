@@ -112,6 +112,141 @@ export function voice(notes, { spread = 1, base = 0 } = {}) {
     .sort((a, b) => a - b);
 }
 
+/* ------------------------------------------------------------ voice leading */
+
+/** Largest chord voiceLead() searches; bigger ones come back unled. */
+const LEAD_MAX = 12;
+// Scratch buffers. Pure working space, rewritten on every call and never read
+// across calls, so sharing them between themes carries no state.
+const _a = new Float64Array(LEAD_MAX);
+const _b = new Float64Array(LEAD_MAX);
+const _c = new Float64Array(LEAD_MAX);
+const _dtw = new Float64Array(LEAD_MAX * LEAD_MAX);
+
+function _load(dst, notes, n) {
+  for (let i = 0; i < n; i++) {
+    const v = notes[i];
+    let j = i - 1;
+    while (j >= 0 && dst[j] > v) { dst[j + 1] = dst[j]; j--; }
+    dst[j + 1] = v;
+  }
+}
+
+function _sortN(dst, n) {
+  for (let i = 1; i < n; i++) {
+    const v = dst[i];
+    let j = i - 1;
+    while (j >= 0 && dst[j] > v) { dst[j + 1] = dst[j]; j--; }
+    dst[j + 1] = v;
+  }
+}
+
+/**
+ * Movement between two sorted voicings `a` (m notes) and `b` (n notes, each
+ * shifted by `shift`), in semitones. Same size: voice i goes to voice i (for
+ * sorted notes that pairing is the cheapest). Different sizes: the cheapest
+ * monotone path that touches every note of both chords — a voice may split
+ * in two or two may merge — so a triad to a seventh costs what the added
+ * note travels, not a penalty.
+ */
+function _cost(a, m, b, n, shift) {
+  if (m === n) {
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += Math.abs(a[i] - (b[i] + shift));
+    return sum;
+  }
+  for (let i = 0; i < m; i++) {
+    for (let j = 0; j < n; j++) {
+      const d = Math.abs(a[i] - (b[j] + shift));
+      let best;
+      if (i === 0 && j === 0) best = 0;
+      else if (i === 0) best = _dtw[j - 1];
+      else if (j === 0) best = _dtw[(i - 1) * n];
+      else {
+        best = Math.min(_dtw[(i - 1) * n + j], _dtw[i * n + j - 1], _dtw[(i - 1) * n + j - 1]);
+      }
+      _dtw[i * n + j] = best + d;
+    }
+  }
+  return _dtw[m * n - 1];
+}
+
+/**
+ * Semitones of movement from one voicing to another (see _cost). Used to
+ * measure voice leading; order of the input notes does not matter.
+ */
+export function voiceDistance(from, to) {
+  const m = Math.min(from?.length || 0, LEAD_MAX);
+  const n = Math.min(to?.length || 0, LEAD_MAX);
+  if (!m || !n) return 0;
+  _load(_a, from, m);
+  _load(_b, to, n);
+  return _cost(_a, m, _b, n, 0);
+}
+
+/**
+ * Nearest-inversion voice leading. Given the chord that just sounded
+ * (`prev`, MIDI notes) and the next chord (`next`, MIDI notes in their
+ * natural register, e.g. straight from chordNotes()), return the inversion of
+ * `next` that moves least from `prev`. Sizes may differ (triad → seventh).
+ *
+ * Candidates are the rotations of `next` (bottom note up an octave, k times),
+ * each shifted by whole octaves, keeping only those whose lowest note lies
+ * within `range` semitones of `anchor` — plus `next` exactly as given, so
+ * leading never moves more than not leading. The window is fixed (default:
+ * around the lowest note of `next`; util.leadChord centres it on the part's
+ * tonic), not following `prev`, which is what stops a long run of changes
+ * drifting up or down: every result has its lowest note in the window or is
+ * the natural voicing itself.
+ *
+ * Deterministic. Ties go to the lowest note nearest the anchor, then to the
+ * lower inversion, then to the lower octave. Allocates only the result.
+ * Returns MIDI notes sorted low to high. With no `prev`, returns the
+ * candidate whose lowest note is nearest the anchor. `next` may be bare pitch
+ * classes if you pass `anchor`.
+ */
+export function voiceLead(prev, next, { range = 6, anchor } = {}) {
+  const k = next?.length || 0;
+  if (!k) return [];
+  if (k > LEAD_MAX) return Array.from(next).sort((x, y) => x - y);
+  _load(_b, next, k);
+  const home = Number.isFinite(anchor) ? anchor : _b[0];
+  const m = Math.min(prev?.length || 0, LEAD_MAX);
+  if (m) _load(_a, prev, m);
+
+  let bestCost = Infinity;
+  let bestAway = Infinity;
+  let bestR = 0;
+  let bestO = 0;
+  for (let r = 0; r < k; r++) {
+    // Rotation r: the lowest r notes go up an octave.
+    for (let i = 0; i < k; i++) _c[i] = _b[i] + (i < r ? 12 : 0);
+    _sortN(_c, k);
+    const low = _c[0];
+    let oLo = Math.ceil((home - range - low) / 12);
+    let oHi = Math.floor((home + range - low) / 12);
+    // `next` as written (rotation 0, no shift) is always in the running.
+    if (r === 0) { oLo = Math.min(oLo, 0); oHi = Math.max(oHi, 0); }
+    for (let o = oLo; o <= oHi; o++) {
+      const shift = 12 * o;
+      const cost = m ? _cost(_a, m, _c, k, shift) : 0;
+      const away = Math.abs(low + shift - home);
+      if (cost < bestCost || (cost === bestCost && away < bestAway)) {
+        bestCost = cost;
+        bestAway = away;
+        bestR = r;
+        bestO = o;
+      }
+    }
+  }
+
+  const out = new Array(k);
+  for (let i = 0; i < k; i++) _c[i] = _b[i] + (i < bestR ? 12 : 0);
+  _sortN(_c, k);
+  for (let i = 0; i < k; i++) out[i] = _c[i] + 12 * bestO;
+  return out;
+}
+
 /** Deterministic PRNG so a given scene always composes the same way. */
 export function mulberry32(seed) {
   let a = seed >>> 0;

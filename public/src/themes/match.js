@@ -7,6 +7,7 @@
  *   { category: 'sport' }                   anything sporty
  *   { place: 'Iron Works Gym' }             a gym with that name
  *   { near: { lat, lng, radius: 120 } }     *that* gym, wherever you saved it
+ *   { inside: { polygon: [[lat,lng], …] } } a campus, an odd-shaped park
  *
  * Matchers return a strength in `0..1`, not a boolean. That matters: a hard
  * on/off switch would make loops snap in and out as you walk, which is exactly
@@ -20,6 +21,8 @@
 const DEFAULT_MIN = 0.08;
 const DEFAULT_FULL = 0.45;
 const DEFAULT_NEAR_RADIUS = 120;
+const DEFAULT_EDGE = 60;          // metres over which a polygon fades out
+export const MAX_POLYGON_VERTICES = 64;
 
 /**
  * @param {object} condition
@@ -82,6 +85,13 @@ export function matchStrength(condition, scene) {
     strength = Math.min(strength, clamp(1 - (d - radius) / radius));
   }
 
+  if (condition.inside !== undefined) {
+    const { polygon, edge = DEFAULT_EDGE } = condition.inside || {};
+    const here = scene.position;
+    if (!here || !isPolygon(polygon)) return 0;
+    strength = Math.min(strength, polygonStrength(here, polygon, edge));
+  }
+
   return strength;
 }
 
@@ -98,6 +108,19 @@ export function describeCondition(condition) {
   if (condition.near !== undefined) {
     const { lat, lng, radius = DEFAULT_NEAR_RADIUS } = condition.near || {};
     parts.push(`within ${Math.round(radius)} m of ${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}`);
+  }
+  if (condition.inside !== undefined) {
+    const { polygon, edge = DEFAULT_EDGE } = condition.inside || {};
+    if (Array.isArray(polygon) && polygon.length) {
+      const pts = polygon.filter((p) => Array.isArray(p) &&
+        Number.isFinite(Number(p[0])) && Number.isFinite(Number(p[1])));
+      const lat = pts.reduce((a, p) => a + Number(p[0]), 0) / (pts.length || 1);
+      const lng = pts.reduce((a, p) => a + Number(p[1]), 0) / (pts.length || 1);
+      parts.push(`inside a ${polygon.length}-point area around ` +
+        `${lat.toFixed(4)}, ${lng.toFixed(4)} (fading over ${Math.round(Number(edge))} m)`);
+    } else {
+      parts.push('inside an area');
+    }
   }
   return parts.length ? parts.join(' and ') : 'always';
 }
@@ -116,7 +139,7 @@ export function validateCondition(condition, where = 'condition') {
       errors.push(...validateCondition(sub, `${where}.any[${i}]`)));
   }
 
-  const known = ['tag', 'category', 'place', 'near', 'any', 'min', 'full'];
+  const known = ['tag', 'category', 'place', 'near', 'inside', 'any', 'min', 'full'];
   for (const key of Object.keys(condition)) {
     if (!known.includes(key)) {
       errors.push(`${where}: unknown key "${key}". Expected one of ${known.join(', ')}.`);
@@ -131,13 +154,102 @@ export function validateCondition(condition, where = 'condition') {
     }
   }
 
-  const hasTest = ['tag', 'category', 'place', 'near', 'any']
+  if (condition.inside !== undefined) {
+    const n = condition.inside;
+    const poly = n && typeof n === 'object' ? n.polygon : undefined;
+    if (!n || typeof n !== 'object' || Array.isArray(n) || !Array.isArray(poly)) {
+      errors.push(`${where}.inside: needs a polygon — a list of [lat, lng] points.`);
+    } else {
+      if (poly.length < 3) {
+        errors.push(`${where}.inside.polygon: needs at least 3 points, has ${poly.length}.`);
+      }
+      if (poly.length > MAX_POLYGON_VERTICES) {
+        errors.push(`${where}.inside.polygon: too many points — at most ${MAX_POLYGON_VERTICES}.`);
+      }
+      poly.forEach((p, i) => {
+        if (!isVertex(p)) {
+          errors.push(`${where}.inside.polygon[${i}]: must be [lat, lng] with lat -90..90 and lng -180..180.`);
+        }
+      });
+      for (const key of Object.keys(n)) {
+        if (key !== 'polygon' && key !== 'edge') {
+          errors.push(`${where}.inside: unknown key "${key}". Expected polygon, edge.`);
+        }
+      }
+      if (n.edge !== undefined && !(typeof n.edge === 'number' && n.edge > 0)) {
+        errors.push(`${where}.inside.edge: must be a positive number of metres.`);
+      }
+    }
+  }
+
+  const hasTest = ['tag', 'category', 'place', 'near', 'inside', 'any']
     .some((k) => condition[k] !== undefined);
   if (!hasTest) {
-    errors.push(`${where}: no test — needs at least one of tag, category, place, near, any.`);
+    errors.push(`${where}: no test — needs at least one of tag, category, place, near, inside, any.`);
   }
 
   return errors;
+}
+
+function isVertex(p) {
+  return Array.isArray(p) && p.length === 2 &&
+    typeof p[0] === 'number' && typeof p[1] === 'number' &&
+    Math.abs(p[0]) <= 90 && Math.abs(p[1]) <= 180;
+}
+
+function isPolygon(poly) {
+  return Array.isArray(poly) && poly.length >= 3 &&
+    poly.length <= MAX_POLYGON_VERTICES && poly.every(isVertex);
+}
+
+/**
+ * 1 inside the polygon, falling linearly to 0 at `edge` metres outside it.
+ *
+ * Inside/outside is ray casting with lat/lng treated as planar — fine at
+ * neighbourhood scale (polygons crossing the antimeridian are not supported).
+ *
+ * Distance outside uses the PRECISE method, not the vertex/midpoint shortcut:
+ * for each edge, find the foot of the perpendicular from the point in a local
+ * plane (longitude scaled by cos(latitude) so metres are square), clamp it to
+ * the segment, then take the haversine distance from the point to that foot.
+ * The minimum over all edges is the distance to the polygon.
+ */
+function polygonStrength(here, polygon, edge) {
+  if (pointInPolygon(here.lat, here.lng, polygon)) return 1;
+  const fade = Number.isFinite(edge) && edge > 0 ? edge : DEFAULT_EDGE;
+  const d = distanceToPolygon(here.lat, here.lng, polygon);
+  return Math.min(1, Math.max(0, 1 - d / fade));
+}
+
+function pointInPolygon(lat, lng, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [yi, xi] = polygon[i];
+    const [yj, xj] = polygon[j];
+    if ((yi > lat) !== (yj > lat) &&
+        lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function distanceToPolygon(lat, lng, polygon) {
+  const k = Math.cos((lat * Math.PI) / 180);    // lng degrees → lat-degree units
+  let best = Infinity;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [aLat, aLng] = polygon[j];
+    const [bLat, bLng] = polygon[i];
+    const ax = (aLng - lng) * k, ay = aLat - lat;
+    const bx = (bLng - lng) * k, by = bLat - lat;
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 > 0 ? Math.min(1, Math.max(0, -(ax * dx + ay * dy) / len2)) : 0;
+    const footLat = aLat + t * (bLat - aLat);
+    const footLng = aLng + t * (bLng - aLng);
+    best = Math.min(best, haversine(lat, lng, footLat, footLng));
+  }
+  return best;
 }
 
 function haversine(lat1, lng1, lat2, lng2) {

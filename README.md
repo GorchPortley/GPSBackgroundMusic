@@ -158,7 +158,20 @@ of restaurant at once. **Reset to default** restores the shipped value.
 
 A theme decides how everywhere sounds. A **cue** decides how *somewhere*
 sounds — extra loops that appear when you are near a kind of place, or a
-specific one:
+specific one.
+
+**In the app.** Press **Bind…** on any saved place (or **Bind here…**, which
+saves where you are standing first). Give it a name, drag the radius
+(50 m – 3 km; the circle is drawn on the radar while the editor is open),
+pick a **Theme while here**, tick any loops to lay on top — backbeat, jangle,
+chime, pulse, foghorn, heartbeat — and press **Save**. Nothing is written
+until you do. If you are standing on the place, you hear it at once.
+**Place cues** lists every cue with its live strength and what it does; the
+ones you made have Edit and Delete, the ones that came in a pack are marked
+*from pack* and are read-only here. A cue made this way is an ordinary pack
+cue with `"_ui": true`, so it exports and imports like any other.
+
+**By hand.** A cue is a few lines of JSON in a pack:
 
 ```json
 { "name": "Gym",     "when": { "tag": "gym" },                      "layers": [ ... ] }
@@ -177,10 +190,15 @@ strength. `examples/cues-example.json` is a working pack to import — see
 
 ### Example packs
 
-`examples/` holds working packs to import from the Anywhere panel:
+`examples/` holds working packs to import from the Anywhere panel.
+`landmarks`, `ocarina` and `cues-example` are also bundled in the app under
+`public/packs/` (listed in `public/packs/index.json`): pick one from
+**Load an example…** in the Anywhere panel — no file picker needed.
+`belmont-walk.json` is deliberately not bundled.
 
 | Pack | What it shows |
 |---|---|
+| `landmarks.json` | Ten famous places, six themes, deliberately unsubtle |
 | `cues-example.json` | The three ways to bind a loop to a place, minimal |
 | `belmont-walk.json` | Every engine feature exercised on one 30-minute walk |
 | `ocarina.json` | Three themes that hand over to each other by region |
@@ -201,6 +219,39 @@ A pack is deliberately *data, never code*. It can retune the music but cannot
 execute anything, which is what makes it safe to accept from a stranger.
 Imported files are validated field by field: out-of-range values are clamped,
 unknown keys dropped, oversized lists truncated.
+
+#### Sharing by link
+
+**Share link** (next to Export) puts the pack *in* a link:
+`https://<where the app is>/#pack=<data>`, where `<data>` is the pack's JSON
+compressed with raw DEFLATE and base64url-encoded. Choose what goes in —
+everything, only what you made here (your cues and tag edits), themes only, or
+a single cue — name it, and **Copy share link**. A cue that holds an imported
+theme brings that theme along. The panel shows what is included and how long
+the link is.
+
+- **Saved places are left out unless you tick them.** They are exact
+  coordinates and often include home. Cues bound to a spot are coordinates
+  too; the panel names every one that is, so you can pick a narrower choice.
+- **Links stop at 8 KB.** A fragment never reaches a server, but chat apps,
+  e-mail and share sheets are less forgiving. Every bundled example fits in
+  full (landmarks ≈ 4 KB). Past 8 KB the app says so and suggests Export pack.
+- **Opening a link** asks first — a shared pack is from someone else — and
+  shows its name and what it holds; Cancel imports nothing. The `#pack=` is
+  removed from the address straight away, so a reload never imports twice.
+  Links that are damaged, cut short, or that would unpack to more than 256 KB
+  are refused with a message.
+- **Paste** accepts a link, a `#pack=…` fragment or a bare `pack=…` code as
+  well as JSON.
+- **In the Android app** there is no public address to link to (the app runs
+  from `appassets.androidplatform.net`, which exists only on the device), so
+  Share link copies a `pack=…` code and opens Android's share sheet. The
+  recipient pastes it into **Paste**, or shares it straight to GPS Music.
+  Whoever builds the APK can set `PUBLIC_SHARE_BASE` in `public/src/share.js`
+  to where `public/` is hosted to get real links instead. Tapping a link does
+  not open the app — it opens the web app in the browser.
+- Needs `CompressionStream` (Chrome/Edge 103+, Firefox 113+, Safari 16.4+);
+  older browsers get a message saying so.
 
 ---
 
@@ -368,6 +419,7 @@ public/
     scene.js    places -> mood vector, scene naming
     tags.js     place type -> mood profile table, aliases, user overrides
     store.js    pack persistence, validation, export/import
+    share.js    pack links: #pack= encode/decode, size caps
     ui.js       DOM + radar canvas
     audio/
       engine.js   master chain, effects, continuous layers, scheduler
@@ -390,6 +442,12 @@ public/
       fantasy.js  strings, rolled harp, flute
       noir.js     swing, walking bass
       presets/overworld.js  loop-driven spec example
+      presets/loops.js      loop presets for the in-app cue editor
+tools/
+  render-check.js  offline level/NaN check of every theme
+  jump-test.js     end-to-end cue/pin timing check
+                   (served at /tools/… only when the server runs with DEV_TOOLS=1,
+                   along with examples/*.json at /examples/… — never copied into public/)
 ```
 
 `window.gpsMusic` is exposed for debugging — inspect `currentMood`, `analysis`,
@@ -402,6 +460,13 @@ or `engine.level()` from the console.
 Your coordinates go to two places: the local server, and from there to whichever
 place provider is configured — OpenStreetMap's Overpass by default, Google
 Places if you supplied a key. Place-name search additionally queries OSM's
-Nominatim. Nothing is stored, logged to disk, or sent anywhere else, and no
-audio is recorded. Saved places and tag edits live in your browser's local
-storage and are only shared if you export a pack yourself.
+Nominatim. When the Weather toggle is on (it is off by default), your
+coordinates rounded to two decimal places (about 1 km) also go directly to
+Open-Meteo, at most every 15 minutes or few kilometres. When the Hills toggle
+is on (also off by default) and your phone's GPS gives no altitude, the
+grid points around you at two decimal places (about 1 km apart) go to
+Open-Meteo's elevation endpoint, once per grid cell per session. Nothing is stored,
+logged to disk, or sent anywhere else, and no audio is recorded. Saved places and tag edits live in your browser's local
+storage and are only shared if you export a pack yourself. A share link
+carries only what you chose in the share panel — saved places only if you
+tick them — and, as a `#` fragment, is never sent to any server by the browser.

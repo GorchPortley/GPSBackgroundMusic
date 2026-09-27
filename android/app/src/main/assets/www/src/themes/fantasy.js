@@ -17,7 +17,11 @@ import {
 import {
   bassVoice, fluteVoice, kick, pluckVoice, rim, shaker, stringVoice,
 } from '../audio/voices.js';
-import { gate, quantise, rnd } from './util.js';
+import { gate, leadChord, quantise, rnd } from './util.js';
+
+// Voice-leading memory for the string bed (util.leadChord). Only this theme
+// touches it, and it starts over on any theme, tonic or mode change.
+const stringsLead = {};
 
 const MODES = [
   'phrygian', 'aeolian', 'harmonicMinor', 'minorPentatonic', 'dorian',
@@ -44,6 +48,7 @@ export const fantasy = {
   name: 'Fantasy',
   available: true,
   description: 'Strings, harp and modal folk lines. Taverns and forests.',
+  color: '#c3a6ff',
 
   /* ------------------------------------------------------------------ plan */
 
@@ -130,7 +135,9 @@ export const fantasy = {
     /* ---- strings: the bed ---- */
     if (chordStart && layers.strings > 0.02) {
       stringVoice(io, {
-        notes: chordNotes(plan.root + 24, scale, degree, timbre.chordSize),
+        // Nearest inversion to the last chord: a section moves by steps.
+        notes: leadChord(stringsLead, plan, bar,
+          chordNotes(plan.root + 24, scale, degree, timbre.chordSize), plan.root + 24),
         time,
         dur: barDur * barsPerChord * 1.06,
         gain: 0.075 * layers.strings,

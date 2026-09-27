@@ -14,6 +14,22 @@
   --radius: 14px;
 }
 
+/* Theme colour (C4.3): ui.js sets --accent on the root to the playing
+   theme's colour. Registering it as a <color> is what lets it transition —
+   an unregistered custom property would snap. Children inherit the value
+   mid-fade, so every accent on the page turns together with the radar. */
+@property --accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #6ee7d0;
+}
+
+:root { transition: --accent 1.5s ease-in-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root { transition: none; }
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -184,6 +200,16 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+/* "Why this music" (C4.1): place names can be long, so wrap, never overflow. */
+.scene-why {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.9);
+}
+
 .stage-foot {
   position: absolute;
   inset: auto 0 0;
@@ -218,6 +244,15 @@ main {
   color: var(--text-faint);
   min-width: 62px;
   flex: none;
+}
+
+.check {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-dim);
+  cursor: pointer;
 }
 
 .power {
@@ -261,7 +296,10 @@ main {
   border-radius: 2px;
 }
 
-.volume { display: flex; align-items: center; gap: 8px; flex: 1; color: var(--text-faint); }
+.volume { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; color: var(--text-faint); }
+/* Two sliders share the row (volume, ambience): let them shrink below a
+   range input's intrinsic width so a phone never scrolls sideways. */
+.volume input[type="range"] { width: 0; min-width: 44px; }
 .vol-icon { width: 18px; height: 18px; flex: none; }
 
 input[type="range"] {
@@ -621,6 +659,8 @@ input[type="search"] {
 
 .pack-row .mini { flex: 1; text-align: center; }
 
+.example-row { display: flex; margin-top: 7px; }
+
 /* -------------------------------------------------------------- tag editor */
 
 .tag-row {
@@ -735,6 +775,75 @@ input[type="search"] {
 .paste-actions { display: flex; gap: 7px; margin-top: 7px; }
 .paste-actions .mini { flex: 1; text-align: center; }
 
+/* ----------------------------------------------------- share by link (P4) */
+
+.pack-row { flex-wrap: wrap; }
+.pack-row .mini { flex: 1 1 auto; white-space: nowrap; }
+
+.share-row { margin: 10px 0 14px; display: grid; gap: 8px; }
+.share-row .hint { margin: 0; }
+
+.share-field {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.share-field select, .share-field input[type="text"] {
+  width: 100%;
+  background: #0a1017;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 9px;
+}
+
+.share-check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.share-row .hint.warn { color: var(--warn); }
+
+.share-out textarea, .paste-row textarea { word-break: break-all; }
+.share-out textarea {
+  width: 100%;
+  background: #0a1017;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text);
+  font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.share-confirm {
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  width: min(420px, calc(100vw - 32px));
+}
+
+.share-confirm::backdrop { background: rgba(5, 8, 12, 0.72); }
+.share-confirm h3 { margin: 0 0 6px; font-size: 16px; }
+.share-confirm-name { margin: 0 0 8px; color: var(--accent); overflow-wrap: anywhere; }
+.share-confirm-list {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+.share-confirm-list .warn { color: var(--warn); }
+
 /* ---------------------------------------------------- theme held by a cue */
 
 .theme-held {
@@ -754,3 +863,187 @@ select.overridden {
   opacity: 0.5;
   border-style: dashed;
 }
+
+/* -------------------------------------------------------------- cue editor */
+
+.saved-actions { display: flex; gap: 6px; }
+
+.saved-list .bind { padding: 0 10px; flex: none; }
+
+.cue-editor {
+  margin: 10px 0 0;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #0c141e;
+}
+
+.cue-editor .tag-editor-head strong { text-transform: none; }
+
+.cue-field {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.cue-field input[type="text"], .cue-field select { grid-column: 2 / 4; }
+.cue-field input[type="range"] { width: 100%; }
+.cue-field output {
+  min-width: 58px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+
+.cue-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 4px 0 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.cue-presets legend { padding: 0 4px; color: var(--text-faint); font-size: 11.5px; }
+.cue-presets label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+
+.cue-editor-hint { margin: 9px 0 0; min-height: 1em; color: var(--warn); }
+.cue-editor-hint:empty { display: none; }
+
+.cue-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.cue-list li.cue-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: #0d1520;
+}
+
+.cue-row .cue-head { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.cue-row .cue-chip { overflow: hidden; text-overflow: ellipsis; }
+.cue-row .cue-pct { font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+.cue-row .where {
+  grid-column: 1 / -1;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cue-row .cue-actions { display: flex; gap: 5px; align-items: center; }
+.cue-row .cue-actions .mini { padding: 4px 9px; }
+
+.cue-row .from-pack {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.cue-list .empty { color: var(--text-faint); font-size: 13px; }
+
+/* ------------------------------------------------------------ pack manager */
+
+.pack-manager {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.pack-manager summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.pack-manager .pm-head {
+  margin: 12px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.saved-list li .pm-theme { cursor: default; min-width: 0; }
+.saved-list li .pm-theme:hover { border-color: var(--line-soft); background: #0d1520; }
+.pm-theme > span:first-child { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pm-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.pm-row .mini:disabled { opacity: 0.5; cursor: default; }
+.mini.danger { color: var(--danger); border-color: #4a2230; flex: 1; text-align: center; }
+.mini.danger:hover { color: #ffb0b0; border-color: #6a2a3a; }
+
+/* --------------------------------------------------------- first-run card */
+/* C4.4: sits in the controls panel under Play, never over it, so Play stays
+   on the first screen of a phone. */
+
+.first-run {
+  margin-top: 14px;
+  padding: 13px 14px;
+  border-radius: 10px;
+  background: #0d1520;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+}
+
+.first-run h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.first-run h3:focus { outline: none; }
+.first-run h3:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+
+.first-run-lines {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.first-run-lines strong { color: var(--text); font-weight: 600; }
+
+.first-run-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.mini.primary { color: var(--accent); border-color: #1f4a44; }
+.mini.primary:hover { color: var(--text); border-color: var(--accent); }

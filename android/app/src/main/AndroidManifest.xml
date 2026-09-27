@@ -78,5 +78,15 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback|location" />
 
+        <!--
+            Geofence transitions from Play Services (C1.3). Not exported: it is
+            reached only through the explicit PendingIntent the app registers.
+            No new permissions: FINE + BACKGROUND location above are exactly
+            what geofencing needs.
+        -->
+        <receiver
+            android:name=".GeofenceReceiver"
+            android:exported="false" />
+
     </application>
 </manifest>

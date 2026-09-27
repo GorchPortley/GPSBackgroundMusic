@@ -2,6 +2,7 @@ package dev.gpsmusic;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -49,6 +50,9 @@ public class MainActivity extends Activity {
     private static final int REQ_NOTIFICATIONS = 102;
     private static final int REQ_FILE = 200;
 
+    /** Set by GeofenceReceiver (and its notification): press Play on first fix. */
+    public static final String EXTRA_AUTOPLAY = "autoplay";
+
     private WebView web;
 
     /** Held between opening the file picker and its result coming back. */
@@ -58,6 +62,9 @@ public class MainActivity extends Activity {
     private String pendingPackJson;
     private String pendingPackError;
     private boolean pageReady = false;
+
+    /** One-shot: taken by the page through AndroidHost.takeAutoplay(). */
+    private volatile boolean pendingAutoplay = false;
 
     private static final Map<String, String> MIME = new HashMap<>();
     static {
@@ -94,6 +101,11 @@ public class MainActivity extends Activity {
 
         web.setBackgroundColor(0xFF0B0F14);
         web.addJavascriptInterface(new Bridge(), "AndroidHost");
+        // Audio-focus changes and media controls from PlaybackService reach
+        // the page through here.
+        PlaybackService.page = js -> {
+            if (web != null) web.evaluateJavascript(js, null);
+        };
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -168,6 +180,8 @@ public class MainActivity extends Activity {
 
         requestPermissions();
         readPackFromIntent(getIntent());
+        // Not on a recreate: the original intent would start playback again.
+        if (savedInstanceState == null) readAutoplayFromIntent(getIntent());
         web.loadUrl(ORIGIN + "/index.html");
     }
 
@@ -177,6 +191,20 @@ public class MainActivity extends Activity {
         setIntent(intent);
         readPackFromIntent(intent);
         deliverPendingPack();
+        readAutoplayFromIntent(intent);
+        if (pendingAutoplay && pageReady && web != null) {
+            // The page is already up and will not ask again on its own.
+            web.evaluateJavascript(
+                    "window.gpsMusic && window.gpsMusic.checkHostAutoplay()", null);
+        }
+    }
+
+    /** A launch from a crossed fence, or from the "tap to play" notification. */
+    private void readAutoplayFromIntent(Intent intent) {
+        if (intent == null || !intent.getBooleanExtra(EXTRA_AUTOPLAY, false)) return;
+        if ((intent.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return;
+        intent.removeExtra(EXTRA_AUTOPLAY);
+        pendingAutoplay = true;
     }
 
     /**
@@ -191,6 +219,16 @@ public class MainActivity extends Activity {
         Uri uri = Intent.ACTION_SEND.equals(intent.getAction())
                 ? intent.getParcelableExtra(Intent.EXTRA_STREAM)
                 : intent.getData();
+        if (uri == null && Intent.ACTION_SEND.equals(intent.getAction())) {
+            // Shared *text* rather than a file: a pack link or `pack=` code
+            // (P4), or pasted JSON. The page's importPackText tells them apart,
+            // and a link is decoded, capped and confirmed there before import.
+            CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+            if (text != null && text.length() > 0 && text.length() <= 2 * 1024 * 1024) {
+                pendingPackJson = text.toString();
+            }
+            return;
+        }
         if (uri == null) return;
 
         try (InputStream in = getContentResolver().openInputStream(uri)) {
@@ -332,6 +370,7 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         // Leaving the service running without a UI would be a stuck notification.
         stopService(new Intent(this, PlaybackService.class));
+        PlaybackService.page = null;
         if (web != null) {
             web.destroy();
             web = null;
@@ -353,8 +392,22 @@ public class MainActivity extends Activity {
     private class Bridge {
         @JavascriptInterface
         public void setPlaying(boolean playing) {
+            if (playing) {
+                // The user (or GAIN) is playing again: no pending resume.
+                PlaybackService.resumeOnGain = false;
+                PlaybackService.userPausing = false;
+            } else if (PlaybackService.resumeOnGain) {
+                // Our own pause for a transient focus loss. Keep the service
+                // and its focus request so AUDIOFOCUS_GAIN can resume.
+                return;
+            }
+            // A pause from the notification or a headset keeps the service
+            // (and its Play button); the in-app button and focus loss stop it.
+            String action = playing ? PlaybackService.ACTION_START
+                    : PlaybackService.userPausing ? PlaybackService.ACTION_PAUSE
+                    : PlaybackService.ACTION_STOP;
             Intent intent = new Intent(MainActivity.this, PlaybackService.class)
-                    .setAction(playing ? PlaybackService.ACTION_START : PlaybackService.ACTION_STOP);
+                    .setAction(action);
             if (playing) startForegroundService(intent);
             else startService(intent);
         }
@@ -362,6 +415,49 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void setScene(String scene) {
             PlaybackService.updateScene(MainActivity.this, scene);
+        }
+
+        /**
+         * The cues that may wake the app when it is closed, as a JSON array
+         * of {name, lat, lng, radius}. Validated and capped in
+         * GeofenceReceiver — the page is not trusted with the OS API.
+         */
+        @JavascriptInterface
+        public void setFences(String json) {
+            if (json == null || json.length() > 64 * 1024) return;
+            GeofenceReceiver.setFences(MainActivity.this, json);
+        }
+
+        /** True once after a fence launch; the page then presses Play on first fix. */
+        @JavascriptInterface
+        public boolean takeAutoplay() {
+            boolean autoplay = pendingAutoplay;
+            pendingAutoplay = false;
+            return autoplay;
+        }
+
+        /**
+         * Open the system share sheet with a pack link or code (P4). The
+         * WebView has no navigator.share, and a pack code is only useful if it
+         * can leave the app.
+         */
+        @JavascriptInterface
+        public void shareText(String text) {
+            if (text == null || text.isEmpty() || text.length() > 64 * 1024) return;
+            runOnUiThread(() -> {
+                Intent send = new Intent(Intent.ACTION_SEND)
+                        .setType("text/plain")
+                        .putExtra(Intent.EXTRA_TEXT, text);
+                Intent chooser = Intent.createChooser(send, getString(R.string.share_pack));
+                // Not back to ourselves: the SEND filter would list this app.
+                chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, new ComponentName[]{
+                        new ComponentName(MainActivity.this, MainActivity.class)});
+                try {
+                    startActivity(chooser);
+                } catch (Exception ignored) {
+                    // No app to share to: the page already copied it.
+                }
+            });
         }
 
         /** Lets the page know it does not need a screen wake lock here. */

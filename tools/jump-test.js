@@ -6,19 +6,17 @@
  * (whatever provider the server is using), scene building, cue evaluation,
  * hysteresis, the urgent commit path and the theme-held label.
  *
- * USAGE (browser, dev server running):
- *   1. cp tools/jump-test.js public/dev-jump.js
- *      cp examples/<pack>.json public/<pack>.json
- *   2. In the page console (a clean page — run localStorage.clear() and
+ * USAGE (browser, dev server started with DEV_TOOLS=1, which serves tools/
+ * at /tools/ and examples/ at /examples/ — nothing is copied into public/):
+ *   1. In the page console (a clean page — run localStorage.clear() and
  *      reload first, or cues from a previous pack will leak in):
  *        const s = document.createElement('script'); s.type = 'module';
- *        s.src = '/dev-jump.js?pack=/landmarks.json'
+ *        s.src = '/tools/jump-test.js?pack=/examples/landmarks.json'
  *              + '&expect=Eiffel=paris;Broadway=broadway;Abbey=wanderer';
  *        document.head.appendChild(s);
  *      Each expectation is  <substring of the saved place's name>=<themeId>.
  *      Use the pack's default theme id for places that should only add layers.
- *   3. Poll window.__J until .state === 'done', then read .rows.
- *   4. rm public/dev-jump.js public/<pack>.json   ← do not ship these.
+ *   2. Poll window.__J until .state === 'done', then read .rows.
  *
  * PASS CRITERIA:  every row has got === want and secs <= 4 (one bar at the
  *                 slowest tempo plus lookup time). A MISS means the pin never

@@ -38,6 +38,7 @@
     <div class="stage-overlay">
       <p class="scene-name" id="sceneName">Silent</p>
       <p class="scene-meta" id="sceneMeta">Press play to begin</p>
+      <p class="scene-why" id="sceneWhy" hidden></p>
       <div class="cue-strip" id="cueStrip" hidden aria-label="Active place cues"></div>
     </div>
     <p class="stage-foot" id="statusLine">Ready.</p>
@@ -58,6 +59,14 @@
         </svg>
         <input type="range" id="volume" min="0" max="100" value="80">
       </label>
+      <label class="volume" title="Ambience — the sound of the place itself">
+        <span class="sr-only">Ambience</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="vol-icon">
+          <path d="M5 19c7 0 13-5 14-14-8 0-14 5-14 14z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M5 19l8-8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <input type="range" id="ambience" min="0" max="100" value="60">
+      </label>
     </div>
 
     <div class="row">
@@ -75,11 +84,49 @@
     </div>
 
     <div class="row">
+      <span class="label">Tempo</span>
+      <label class="check" title="While you walk, the beat settles on your steps (or half/double them)">
+        <input type="checkbox" id="paceLock">
+        <span>Match my pace</span>
+      </label>
+    </div>
+
+    <div class="row">
+      <span class="label">Weather</span>
+      <label class="check" title="Rain, wind and cloud shade the music. Sends your position, rounded to about 1 km, to Open-Meteo">
+        <input type="checkbox" id="weatherOn" autocomplete="off">
+        <span>Use local weather</span>
+      </label>
+    </div>
+
+    <div class="row">
+      <span class="label">Hills</span>
+      <label class="check" title="Climbing a hill adds tension. Uses GPS altitude when your phone has it; otherwise sends grid points about 1 km apart to Open-Meteo">
+        <input type="checkbox" id="hillsOn" autocomplete="off">
+        <span>Climbing adds tension</span>
+      </label>
+    </div>
+
+    <div class="row">
       <span class="label">Theme</span>
       <select id="theme" aria-label="Music theme"></select>
     </div>
     <p class="theme-note" id="themeNote"></p>
     <p class="theme-held" id="themeHeld" hidden></p>
+
+    <!-- First-run card (C4.4): shown until dismissed. Below Play, never over it. -->
+    <section class="first-run" id="firstRun" aria-labelledby="firstRunTitle" hidden>
+      <h3 id="firstRunTitle" tabindex="-1">Welcome</h3>
+      <ul class="first-run-lines">
+        <li>This composes music from the places around you &mdash; caf&eacute;s, parks, stations &mdash; and it changes as you move.</li>
+        <li>Press <strong>Play</strong> above to start. Explore lets you stand anywhere without going there.</li>
+        <li>Not sure where to begin? Try an example pack from <strong>Load an example&hellip;</strong> under Anywhere.</li>
+      </ul>
+      <div class="first-run-actions">
+        <button type="button" id="firstRunExamples" class="mini">Show the examples</button>
+        <button type="button" id="firstRunDismiss" class="mini primary">Got it</button>
+      </div>
+    </section>
   </section>
 
   <!-- ----------------------------------------------------------- explore -->
@@ -96,28 +143,116 @@
 
     <div class="saved-head">
       <h3>Saved</h3>
-      <button type="button" id="saveHere" class="mini">+ Save this spot</button>
+      <span class="saved-actions">
+        <button type="button" id="saveHere" class="mini">+ Save this spot</button>
+        <button type="button" id="bindHere" class="mini">Bind here…</button>
+      </span>
     </div>
     <ul id="savedList" class="saved-list">
       <li class="empty">Nothing saved yet.</li>
+    </ul>
+
+    <div class="cue-editor" id="cueEditor" hidden>
+      <div class="tag-editor-head">
+        <strong id="cueEditorTitle">Bind something to this place</strong>
+        <span class="scope" id="cueEditorWhere"></span>
+      </div>
+      <label class="cue-field">
+        <span>Name</span>
+        <input type="text" id="cueName" maxlength="80" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="cue-field">
+        <span>Radius</span>
+        <input type="range" id="cueRadius" min="0" max="1000" step="1" value="268">
+        <output id="cueRadiusOut">150 m</output>
+      </label>
+      <label class="cue-field">
+        <span>Theme while here</span>
+        <select id="cueTheme"></select>
+      </label>
+      <fieldset class="cue-presets" id="cuePresets">
+        <legend>Loops on top</legend>
+      </fieldset>
+      <p class="hint cue-editor-hint" id="cueEditorHint"></p>
+      <div class="editor-actions">
+        <button type="button" id="cueSave" class="mini">Save</button>
+        <button type="button" id="cueDelete" class="mini">Delete</button>
+        <button type="button" id="cueCancel" class="mini">Cancel</button>
+      </div>
+    </div>
+
+    <div class="saved-head">
+      <h3>Place cues</h3>
+    </div>
+    <ul id="cueList" class="cue-list">
+      <li class="empty">No cues yet. Bind something to a saved place.</li>
     </ul>
 
     <div class="pack-row">
       <button type="button" id="exportPack" class="mini">Export pack</button>
       <button type="button" id="importPack" class="mini">Import pack</button>
       <button type="button" id="pasteToggle" class="mini">Paste</button>
+      <button type="button" id="shareToggle" class="mini"
+              title="Copy a link that carries the pack itself">Share link</button>
       <input type="file" id="importFile" accept="application/json,.json,text/plain" hidden>
+    </div>
+    <div class="example-row">
+      <select id="examplePacks" aria-label="Load an example pack">
+        <option value="" disabled selected>Load an example…</option>
+      </select>
     </div>
     <div class="paste-row" id="pasteRow" hidden>
       <label class="sr-only" for="pasteArea">Paste pack JSON</label>
       <textarea id="pasteArea" rows="4" spellcheck="false"
-                placeholder="Paste the contents of a pack .json file here"></textarea>
+                placeholder="Paste a pack .json, or a pack link / pack= code"></textarea>
       <div class="paste-actions">
         <button type="button" id="pasteApply" class="mini">Import pasted</button>
         <button type="button" id="pasteCancel" class="mini">Cancel</button>
       </div>
     </div>
+    <div class="share-row" id="shareRow" hidden>
+      <label class="share-field">What to share
+        <select id="shareScope"></select>
+      </label>
+      <label class="share-check">
+        <input type="checkbox" id="shareLocations">
+        <span id="shareLocationsLabel">Include my saved places (exact coordinates)</span>
+      </label>
+      <label class="share-field">Name, shown to whoever opens it
+        <input type="text" id="shareName" maxlength="80" autocomplete="off">
+      </label>
+      <p class="hint" id="shareSummary" aria-live="polite"></p>
+      <div class="paste-actions">
+        <button type="button" id="shareCopy" class="mini primary">Copy share link</button>
+        <button type="button" id="shareCancel" class="mini">Close</button>
+      </div>
+      <div class="share-out" id="shareOutRow" hidden>
+        <label class="sr-only" for="shareOut">Share link</label>
+        <textarea id="shareOut" rows="3" readonly spellcheck="false"></textarea>
+      </div>
+    </div>
     <p class="hint" id="packHint">Your tag edits, saved places and theme, as one file you can share.</p>
+
+    <details class="pack-manager" id="packManager">
+      <summary>Manage what is installed</summary>
+      <p class="hint" id="pmSummary"></p>
+      <h3 class="pm-head">Imported themes</h3>
+      <ul id="pmThemes" class="saved-list pm-list">
+        <li class="empty">No imported themes.</li>
+      </ul>
+      <div class="pm-row">
+        <span id="pmTags">No tag edits.</span>
+        <button type="button" id="pmTagReset" class="mini">Reset all tag edits</button>
+      </div>
+      <p class="hint">Saved places and cues are removed from their own lists above.</p>
+      <div class="pm-row">
+        <span>Welcome card</span>
+        <button type="button" id="pmFirstRun" class="mini">Show again</button>
+      </div>
+      <div class="pm-row">
+        <button type="button" id="pmResetAll" class="mini danger">Reset everything…</button>
+      </div>
+    </details>
   </section>
 
   <!-- ------------------------------------------------------------- mood -->
@@ -152,5 +287,16 @@
 </footer>
 
 <script type="module" src="/src/main.js"></script>
+<dialog id="shareConfirm" class="share-confirm" aria-labelledby="shareConfirmTitle">
+  <h3 id="shareConfirmTitle">Import a shared pack?</h3>
+  <p class="share-confirm-name" id="shareConfirmName"></p>
+  <ul class="share-confirm-list" id="shareConfirmList"></ul>
+  <p class="hint">Someone else made this. A pack is data: it can change the music
+    and add places, but cannot run anything. It is merged into what you have.</p>
+  <div class="paste-actions">
+    <button type="button" id="shareConfirmCancel" class="mini">Cancel</button>
+    <button type="button" id="shareConfirmOk" class="mini primary">Import</button>
+  </div>
+</dialog>
 </body>
 </html>

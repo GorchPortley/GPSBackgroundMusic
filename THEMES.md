@@ -101,16 +101,64 @@ pad and a bass in a quiet lane to a full arrangement on a busy junction.
 |---|---|---|
 | `id`, `name` | — | Required. `id` must be unique. |
 | `description` | | One line, shown in the selector |
+| `color` | the app's teal | The page accent and radar tint while this theme is playing, so a handover is seen as well as heard. Exactly `#rrggbb` (e.g. `"#e39a6b"`); names, `#rgb` and anything else are rejected. It fades over 1.5 s when the new theme actually takes over, not when it is first asked for. The accent colours text, so pick a light colour that reads on the dark page |
 | `bpm` | 90 | Tempo |
 | `barsPerChord` | 1 | How long each chord lasts |
 | `trim` | 1 | Output level vs. other themes. Tune this last |
+| `ambience` | 1 | How much of the place's own sound this theme lets through, 0–1 (a plain number). `0` = none. See §9 |
 | `rootRange` | `[36, 47]` | MIDI range the tonic is picked from |
 | `modes` | all eight | Dark → bright ladder; brightness picks a position |
 | `progressions` | one minor loop | See below |
 | `drone`, `air` | 0.04, 0.012 | The engine's two continuous beds |
 | `droneCutoff`, `airCutoff`, `airQ` | | Tone of those beds |
 | `fx` | | `reverbMix`, `reverbSeconds`, `delayMix`, `delayFeedback`, `delayTone` |
+| `form` | `{ breathEvery: 4 }` | Breath: every `breathEvery` phrases (four bars each), the last bar drops the percussion layers and any layer with `breath: true`, and the pad rings on. A whole number; `0` turns it off. At 120 bpm with the default that is one bar of air every 32 s |
+| `form.sections` | none | Song form: one letter `A`–`D` per four-bar phrase, cycling, up to 8 — e.g. `"AABA"`. Phrase *n* plays letter `sections[n % length]`, so a section only ever changes at a phrase seam. Leave it out and every phrase is `A` and nothing changes. See [Sections](#sections) |
+| `form.A` … `form.D` | none | What a section changes: `{ progression, degreeShift, density }`, all optional. See [Sections](#sections) |
 | `layers` | — | Required, at least one |
+
+### Sections
+
+A theme can have a song form: phrases lettered `A`–`D` that come round in a
+fixed order, so a tune has somewhere to go and come back from.
+
+```js
+form: {
+  sections: 'AABA',                       // one letter per four-bar phrase, cycling
+  B: { progression: [3, 3, 0, 4] },       // the bridge moves to IV and turns back through V
+},
+layers: [
+  { name: 'lead',   voice: 'pulse', pattern: '0 ~ 2 4 …', sections: 'A' },   // the tune: A only
+  { name: 'bridge', voice: 'pulse', generate: { … },      sections: 'B' },   // a new line in B
+  { name: 'bass',   voice: 'bass',  pattern: '0 4 0 4 0 4 0 4' },            // every section
+]
+```
+
+A letter's entry (`form.B` here) may change three things, each optional:
+
+| Field | Notes |
+|---|---|
+| `progression` | Scale degrees, 1–16 whole numbers (−14…14), played instead of the scene's progression. It starts from its first chord at the start of every phrase of that section, one chord per `barsPerChord` bars — so with four chords and `barsPerChord: 2`, only the first two are heard |
+| `degreeShift` | A whole number −7…7 added to every chord of whatever progression is playing in that section (`3` moves I–V–vi–IV up to IV–I–ii–vii) |
+| `density` | −1…1 added to the scene's density for that section's layer `level`s (and a generated melody's numbers), so `0.3` lets busier layers in for the section and `−0.3` thins it out |
+
+A layer's `sections` (e.g. `"B"` or `"AB"`) limits it to those sections; without
+it a layer plays in all of them. Without `form.sections` every phrase counts as
+`A`, so a layer that says `"B"` is never heard (the validator warns).
+
+How it fits with the rest: breath still falls on its own schedule (every
+`breathEvery` phrases, whatever the section); a `fill` still replaces the loop
+in the last bar before a change lands, for the layers playing in that section;
+chords in `pad`/`strings` are voice-led across the section change like any other
+chord change. Section changes need no waiting for a boundary — they *are* on
+the boundary — so a key or theme change still lands exactly as before. Cue
+layers follow the section's chords too, so they stay in harmony.
+
+With `sections`, a `generate` layer composes one line per letter and bar of the
+phrase instead of per absolute bar: the A phrases repeat the A line, B has its
+own, and it comes back the same each time round (in a new place, a new set of
+lines). The notes still follow the chord under them, so a line repeats exactly
+wherever its chords repeat.
 
 ### Progressions
 
@@ -141,14 +189,52 @@ dark modes so an overworld tune never turns funereal.
 |---|---|
 | `name` | Used for the level; must be unique. `drone` and `air` are reserved |
 | `voice` | See the voice table below |
-| `pattern` | The loop, in mini-notation |
+| `pattern` | The loop, in mini-notation. A layer has `pattern` **or** `generate`, never both |
+| `generate` | Instead of `pattern`: a melody composed for the place (below). Pitched or chordal voices only |
+| `fill` | Optional. A second pattern played *instead of* `pattern` in the last bar before a theme, key or chord change lands — a drum fill into the new section. Code themes can do the same with `pos.stepsToCommit` (steps until the change, set only while one is waiting) |
 | `octave` | Octaves above the tonic. `0` is bass, `2` mid, `3–4` melody |
 | `gain` | Loudness of this layer. Defaults per voice |
 | `level` | When it is audible (above) |
 | `dur` | Note length **in steps**, for sustained voices. Defaults to the pattern slot |
 | `chordSize` | For `pad`/`strings`: 3 for triads, 4 for sevenths |
+| `voiceLead` | For `pad`/`strings`: `true` (default) or `false`. On, each chord is played in the inversion nearest the one before it, so the voices move by steps instead of the whole chord jumping; its lowest note stays between a fourth below and a fifth above the layer's tonic (`octave`), so the part never drifts. `false` plays every chord in root position exactly as stacked. Starts over from root position on a new theme, key or mode. Chords written as note names (`c4`) are never moved |
 | `params` | Extra voice parameters (below), each a constant or `[min,max,dim]` |
 | `humanise` | Timing scatter in seconds. Default `0.004`; `0` for machine-tight |
+| `breath` | Optional `true`/`false`: does this layer rest in the breath bar (see `form`)? Defaults to `true` for percussion voices, `false` for the rest. If the breath bar is also a `fill` bar, a layer with a `fill` plays its fill |
+| `sections` | Optional: the sections this layer plays in, 1–4 letters `A`–`D` (`"B"`, `"AB"`). Absent = every section. See [Sections](#sections) |
+
+### Generated melodies
+
+Write `generate` instead of `pattern` and the layer composes its own tune — a
+different one in every place, the same one every time you stand in the same
+place, and always in key:
+
+```js
+{ name: 'lead', voice: 'flute', octave: 3,
+  generate: {
+    kind: 'markov',              // the only kind so far; may be left out
+    density: [0.3, 0.7, 'd'],    // 0–1: chance an off-beat 16th may sound (8ths always may). Default 0.45
+    range: [0, 9],               // lowest and highest scale degree above the tonic. Default [0, 9]
+    leap: [0.1, 0.5, 't'],       // 0–1: chance a move jumps 3–5 degrees instead of 1–2. Default 0.2
+    rest: 0.35,                  // 0–1: chance any step is left silent. Default 0.35
+    contour: [-1, 1, 'b'],       // -1…1: tends to fall … tends to climb. Default 0
+  } }
+```
+
+Every number may follow the mood, like any other spec number (each end of
+`range` too). The tune is a walk over scale degrees, one bar at a time: each
+note steps or leaps from the last, bounces back off the ends of `range`, and
+on beats 1 and 3 (steps 0 and 8) moves to the nearest note of the current
+chord. The first step of a new chord always plays. The walk is seeded by the
+place, the bar number and the layer's `name`, so two generated layers in one
+theme play different lines (with [sections](#sections), by the section
+letter and the bar within the phrase instead, so each letter's line comes
+back). A bar is fixed once it starts: the mood gliding
+underneath changes the next bar, not the one you are hearing.
+
+`fill` and `breath` work as on any layer: a `fill` pattern replaces the
+generated bar before a change lands, and a generated layer plays through the
+breath bar unless it says `breath: true`.
 
 ---
 
@@ -174,6 +260,25 @@ string, never code, which is what makes a theme safe to accept from a stranger.
 ```
 
 These nest: `"<[0 2] 4>*2 7"` is valid.
+
+### Euclidean rhythms
+
+`x(k,n)` spreads **k** hits as evenly as possible over **n** slots; a third
+number rotates the result left, as in Tidal. Two numbers give you most of the
+world's rhythms:
+
+```
+"x(3,8)"        x ~ ~ x ~ ~ x ~     tresillo
+"x(5,8)"        x ~ x x ~ x x ~     cinquillo
+"x(3,8,2)"      ~ x ~ ~ x ~ x ~     tresillo, rotated left by 2
+"0(3,8)"        0 ~ ~ 0 ~ ~ 0 ~     works on notes too
+"[x(3,8)]*2"    the same rhythm twice per bar
+```
+
+It binds to the term just before it, like `*n`, so `"<0 4>(3,8)"` and
+`"[0 2](3,8)"` work too. It is expanded when the pattern is parsed — nothing is
+evaluated. `n` is capped at 64; `k` of 0 is all rests and `k` ≥ `n` is every
+slot. Anything else in parentheses, such as `x(3)`, is reported as an error.
 
 ### Numbers are scale degrees, not pitches
 
@@ -207,6 +312,8 @@ within the step rather than stacking, so `"0*32"` articulates properly.
 | `flute` | pitched | `breath`, `vibrato`, `reverb` |
 | `pulse` | pitched | `duty` (0.5 hollow, 0.25 nasal, 0.125 thin), `cutoff`, `resonance`, `glideFrom`, `vibrato`, `pan` |
 | `blip` | pitched | `decay`, `duty`, `bend` — short chirps |
+| `fm` | pitched | `ratio` (0.25–12, default 2), `index` (0–12, default 2), `decay` (index envelope, s), `release`, `reverb`, `pan` — two-operator FM that holds for `dur`. `ratio: 1` electric piano, `3.5` with `index: 3, decay: 0.4` a bell, `7` glassy |
+| `string` | pitched | `decay` (s to fade ~60 dB, 0.05–10, default 1.5), `bright` (0 dull thumb – 1 bright pick, default 0.5), `reverb`, `delay`, `pan` — Karplus–Strong plucked string (an AudioWorklet): guitar, harp, koto, banjo. A one-shot like `pluck`; where AudioWorklet is unavailable it plays `pluck` instead |
 | `kick` | drum | `tone` |
 | `hat` | drum | `decay` |
 | `shaker` | drum | `decay` |
@@ -217,6 +324,11 @@ within the step rather than stacking, so `"0*32"` articulates properly.
 
 All are synthesised at runtime; there are no samples. Every voice also accepts
 `reverb` and `delay` as send amounts (`0..1`).
+
+`pad` and `strings` are voice-led: a new chord takes the inversion nearest
+the previous one (see `voiceLead` in the layer fields; `false` turns it off
+for a layer). A code theme gets the same with `leadChord(state, plan, bar,
+notes, tonic)` from `themes/util.js` — `wanderer` and `fantasy` use it.
 
 ---
 
@@ -229,6 +341,7 @@ When a pattern is not enough, write the two functions directly. See
 ```js
 export const myTheme = {
   id: 'mine', name: 'Mine', available: true, description: '...',
+  color: '#a1b2c3',   // optional accent, same rule as a spec's `color`
 
   // Called every 1.5 s. Turn a mood into a concrete arrangement.
   plan(mood, seed) { return { /* ...plan shape... */ }; },
@@ -240,6 +353,17 @@ export const myTheme = {
 
 `pos` gives you `{ step, time, stepDur, barDur, stepInBar, bar, barInPhrase,
 phrase }`. `io` is the bundle every voice function takes.
+
+To breathe like a spec theme, return `form: { breathEvery: 4 }` from `plan()`
+and skip your drums when `breathing(plan, pos)` (from `themes/util.js`) is
+true — `wanderer.js` does. Cue layers on top of your theme follow the same
+`plan.form`; without one they never rest. Likewise `section(plan, pos)` (also
+from `util.js`) returns the current section letter when `plan.form.sections`
+is set (`null` otherwise); a code theme may use it however it likes, and cue
+layers with `sections` read it from your plan. If your `plan.form` also
+carries letter tweaks (`B: { progression, degreeShift }`), cue layers follow
+those chords, so only return them if your own `step` plays the same ones.
+The built-in code themes have no sections.
 
 ### Three rules the engine relies on
 
@@ -260,9 +384,14 @@ Anything continuous — tempo, filter cutoffs, reverb size, layer levels — gli
 to its new value over seconds. Anything discrete — key, mode, chord sequence —
 is held until the next four-bar phrase boundary. You return a static
 description; the engine handles getting there smoothly.
+When the change is a new theme or a new tonic, the engine itself plays a short noise
+riser into the downbeat and lets the reverb bloom for a moment.
 
 Return `trim` to balance your theme's loudness against the others. Check it by
 rendering offline and comparing RMS, rather than by ear at one volume.
+
+Return `ambience` (0–1, default 1) to scale the place's ambience under your
+theme — §9. It glides like any other continuous field.
 
 ---
 
@@ -289,7 +418,15 @@ Cues live in a pack, alongside your tag edits and saved places, so they are
 shared the same way. `examples/cues-example.json` is a working one — import it
 from the Anywhere panel.
 
-### Four ways to say where
+You do not have to write cues by hand for the common case. In the Anywhere
+panel, **Bind…** on a saved place opens an editor for a `near` cue — name,
+radius, a theme to hold while you are there, and any of the loop presets in
+`public/src/themes/presets/loops.js` (ordinary spec layers, copied into the
+cue). What it saves is exactly the format below plus `"_ui": true`, which only
+tells the editor it may offer Edit and Delete; cues without it are shown as
+*from pack* and left alone.
+
+### Five ways to say where
 
 | Condition | Matches | Use for |
 |---|---|---|
@@ -297,8 +434,15 @@ from the Anywhere panel.
 | `{ "category": "sport" }` | anything sporty | a broad family |
 | `{ "place": "Omega Music" }` | a place whose **name** contains that | a named business |
 | `{ "near": { "lat": …, "lng": …, "radius": 120 } }` | that **specific building** | *your* gym |
+| `{ "inside": { "polygon": [[lat, lng], …], "edge": 60 } }` | anywhere **inside that shape** | a campus, an odd-shaped park, a neighbourhood |
 
 `{ "any": [ … ] }` ORs a list. Several keys in one condition are ANDed.
+
+`inside` takes 3 to 64 `[lat, lng]` points in order around the shape (don't
+repeat the first at the end). It is full strength anywhere inside and fades
+to nothing `edge` metres outside the nearest side (default 60). There is no
+way to draw one in the app yet — write it in the pack's JSON; the cue list
+shows it as *from pack*.
 
 **Conditions return a strength, not a yes/no.** A gym half a street away brings
 its riff in quietly; standing outside brings it up full; walking away fades it
@@ -321,7 +465,32 @@ the strongest thing present, so `1.0` means "this defines where you are".
   own genre. Takes over once the cue passes half strength, and releases as you
   leave.
 
+- **`spatial`** — `true` makes a `near` cue's loops come *from the place*: the
+  market to your left, its chimes on your left. Default `false`.
+
 Both together is fine: pin Noir at the record shop *and* add a bell.
+
+```json
+{
+  "name": "Market chimes",
+  "when": { "near": { "lat": …, "lng": …, "radius": 150 } },
+  "spatial": true,
+  "layers": [ { "name": "chime", "voice": "bell", "pattern": "0 ~ 4 ~" } ]
+}
+```
+
+How `spatial` behaves:
+
+- Pan is `sin(bearing to the place − your heading) × 0.7`: dead ahead or
+  behind is centred, straight to one side is 0.7 that way — never hard left
+  or right. Walk past and the loop sweeps across.
+- It only updates while you are moving faster than 0.5 m/s (a heading means
+  nothing standing still), so stopping freezes the pan where it was.
+- The whole cue moves together through its own panner and glides between
+  updates — it never jumps from one note to the next. Echoes and reverb stay
+  around you; only the direct sound points.
+- Only a top-level `when.near` has a single spot to point at. On any other
+  condition `spatial` is ignored.
 
 ### Which cues are firing
 
@@ -367,6 +536,16 @@ Spec themes and cues travel in a **pack** — the same JSON file that carries
 your tag edits and saved places. Export from the Anywhere panel, send the file, they
 import it.
 
+Or send a **link**: **Share link** in the Anywhere panel packs the themes (or a
+single cue, or everything) into `…/#pack=<data>` — the JSON, raw-DEFLATE
+compressed and base64url-encoded. Opening it asks before importing and then
+takes exactly the same path as a pasted file: `sanitise()`, then
+`validateSpec` / `validateCue`. Links are capped at 8 KB (a theme is typically
+300–700 bytes compressed, so the six landmarks themes make a ~3.3 KB link) and
+unpack to at most 256 KB. Saved places are left out unless ticked. In the
+Android app the share is a bare `pack=…` code, which **Paste** accepts. The
+README's "Sharing by link" has the details.
+
 Imported themes are validated before use: unknown voices, malformed patterns,
 reserved names and id collisions with built-ins are all rejected with a message
 naming the layer at fault. A broken theme is skipped, never allowed to take the
@@ -397,4 +576,30 @@ public/src/audio/
   voices.js             every synth voice, with its parameters
   theory.js             scales, chords, progressions, seeded RNG
   engine.js             transport and effects; you rarely need to read this
+  ambience.js           the place's own sound (§9)
 ```
+
+---
+
+## 9. Ambience
+
+Under the music sits a quiet synthesised soundscape that mirrors what is
+around you *literally*, where the music expresses its mood. Nothing is
+sampled.
+
+| Bed | Comes from | Sound |
+|---|---|---|
+| birds | category `nature` | short sine chirps, 2.8 ↔ 4.5 kHz, every 0.4–3 s; silent 22:00–05:00 |
+| water | category `water` | noise through a slowly wandering 500 Hz band |
+| traffic | `transit` + `service`, or a built-up scene (urbanness > 0.6) | low rumble, with a car passing every 6–20 s |
+| murmur | `food` + `nightlife` + `retail` | six drifting voice-band noises: a distant crowd |
+| rain | weather, when the Weather toggle is on (rain mm/h ÷ 4) | high hiss with sparse drips |
+
+Each bed's level is `category share × 1.6` (capped at 1) × the **Ambience**
+slider (next to volume, default 60 %) × the theme's `ambience`. Levels glide
+over about 2 s; the whole layer is held more than 18 dB under the music's
+peak, so it never changes a theme's balance.
+
+A theme sets how much of this it wants: `"ambience": 0.5` for half,
+`"ambience": 0` for none at all — a spec field, or a `plan()` field in a code
+theme.

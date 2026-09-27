@@ -454,3 +454,64 @@ export function categoryFor(type) {
 export function prettyTag(type) {
   return String(type).replace(/_/g, ' ');
 }
+
+/**
+ * Everyday names for the "why this music" line (C4.1). Anything not listed
+ * falls back to `prettyTag`, so a new type is never unnamed, just literal.
+ */
+const PLACE_LABELS = {
+  cafe: 'café',
+  internet_cafe: 'internet café',
+  night_club: 'nightclub',
+  transit_station: 'station',
+  train_station: 'station',
+  light_rail_station: 'tram stop',
+  tourist_attraction: 'attraction',
+  historical_landmark: 'landmark',
+  historical_place: 'historic site',
+  cultural_landmark: 'landmark',
+  movie_theater: 'cinema',
+  performing_arts_theater: 'theatre',
+  meal_takeaway: 'takeaway',
+  fast_food_restaurant: 'fast-food place',
+  hair_care: 'hair salon',
+  car_repair: 'garage',
+  storage: 'storage yard',
+  laundry: 'laundrette',
+  police: 'police station',
+  veterinary_care: 'vet',
+  real_estate_agency: 'estate agent',
+  local_government_office: 'council office',
+  government_office: 'council office',
+  parking: 'car park',
+  parking_lot: 'car park',
+  parking_garage: 'car park',
+  natural_feature: 'natural feature',
+  water_body: 'body of water',
+  hiking_area: 'trail',
+  atm: 'ATM',
+  lodging: 'place to stay',
+  sports_activity_location: 'sports ground',
+  educational_institution: 'school',
+};
+
+/** The singular everyday name of a (canonical) place type. */
+export function placeLabel(type) {
+  return PLACE_LABELS[type] || prettyTag(type);
+}
+
+/** "a café", "an ATM", "3 cafés", "2 places of worship". */
+export function countedPlaces(type, n) {
+  const label = placeLabel(type);
+  if (n === 1) return `${/^(?:uni|use|eu|one)/i.test(label) || !/^[aeiou]/i.test(label) ? 'a' : 'an'} ${label}`;
+  return `${n} ${pluralise(label)}`;
+}
+
+/** English plural of a label; for "place of worship" the head noun changes. */
+function pluralise(label) {
+  const of = label.indexOf(' of ');
+  if (of > 0) return pluralise(label.slice(0, of)) + label.slice(of);
+  if (/(?:s|x|z|ch|sh)$/i.test(label)) return `${label}es`;
+  if (/[^aeiou]y$/i.test(label)) return `${label.slice(0, -1)}ies`;
+  return `${label}s`;
+}
