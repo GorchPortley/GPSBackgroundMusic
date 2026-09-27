@@ -73,6 +73,22 @@ export class UI {
       pasteArea: $('pasteArea'),
       pasteApply: $('pasteApply'),
       pasteCancel: $('pasteCancel'),
+      shareToggle: $('shareToggle'),
+      shareRow: $('shareRow'),
+      shareScope: $('shareScope'),
+      shareLocations: $('shareLocations'),
+      shareLocationsLabel: $('shareLocationsLabel'),
+      shareName: $('shareName'),
+      shareSummary: $('shareSummary'),
+      shareCopy: $('shareCopy'),
+      shareCancel: $('shareCancel'),
+      shareOutRow: $('shareOutRow'),
+      shareOut: $('shareOut'),
+      shareConfirm: $('shareConfirm'),
+      shareConfirmName: $('shareConfirmName'),
+      shareConfirmList: $('shareConfirmList'),
+      shareConfirmOk: $('shareConfirmOk'),
+      shareConfirmCancel: $('shareConfirmCancel'),
       packHint: $('packHint'),
       pmSummary: $('pmSummary'),
       pmThemes: $('pmThemes'),
@@ -400,6 +416,26 @@ export class UI {
       sel.focus({ preventScroll: true });
     });
 
+    // Share by link (P4). Every change re-summarises and re-measures.
+    this.el.shareToggle.addEventListener('click', () => {
+      if (this.el.shareRow.hidden) this.h.onShareOpen?.();
+      else this.closeShare();
+    });
+    const shareChanged = () => {
+      this.el.shareOutRow.hidden = true;
+      this.h.onShareChange?.(this.shareOptions());
+    };
+    this.el.shareScope.addEventListener('change', () => {
+      const opt = this.el.shareScope.selectedOptions[0];
+      if (opt?.dataset.name) this.el.shareName.value = opt.dataset.name;
+      shareChanged();
+    });
+    this.el.shareLocations.addEventListener('change', shareChanged);
+    this.el.shareName.addEventListener('change', shareChanged);
+    this.el.shareCopy.addEventListener('click', () => this.h.onShareCopy?.(this.shareOptions()));
+    this.el.shareCancel.addEventListener('click', () => this.closeShare());
+    this.el.shareOut.addEventListener('focus', () => this.el.shareOut.select());
+
     this.el.pasteCancel.addEventListener('click', () => this.hidePaste());
     this.el.pasteApply.addEventListener('click', () => {
       this.h.onPastePack?.(this.el.pasteArea.value);
@@ -429,6 +465,131 @@ export class UI {
   hidePaste() {
     this.el.pasteRow.hidden = true;
     this.el.pasteArea.value = '';
+  }
+
+  /* ------------------------------------------------------ share by link */
+
+  /**
+   * Open the share panel. `scopes` is [{ value, label, name }]; `name` is the
+   * default label for that choice. Saved places start unticked, every time:
+   * they are exact coordinates, often home-like, and sharing them is opt-in.
+   */
+  openShare({ scopes, places }) {
+    const sel = this.el.shareScope;
+    sel.replaceChildren();
+    for (const s of scopes) {
+      const opt = document.createElement('option');
+      opt.value = s.value;
+      opt.textContent = s.label;
+      opt.dataset.name = s.name || '';
+      sel.append(opt);
+    }
+    sel.selectedIndex = 0;
+    this.el.shareName.value = scopes[0]?.name || '';
+    this.el.shareLocations.checked = false;
+    this.el.shareLocations.disabled = !places;
+    this.el.shareLocationsLabel.textContent = places
+      ? `Include my ${places} saved place${places === 1 ? '' : 's'} (exact coordinates \u2014 off unless you tick it)`
+      : 'No saved places to include';
+    this.el.shareOutRow.hidden = true;
+    this.el.shareOut.value = '';
+    this.el.shareRow.hidden = false;
+    this.el.pasteRow.hidden = true;
+    this.h.onShareChange?.(this.shareOptions());
+  }
+
+  closeShare() {
+    this.el.shareRow.hidden = true;
+    this.el.shareOut.value = '';
+    this.el.shareOutRow.hidden = true;
+  }
+
+  shareOptions() {
+    return {
+      scope: this.el.shareScope.value,
+      locations: this.el.shareLocations.checked,
+      name: this.el.shareName.value.trim().slice(0, 80),
+    };
+  }
+
+  /** `lines` as from summarisePack; `note` a closing sentence; warn tints it. */
+  setShareSummary({ lines = [], note = '', warn = false } = {}) {
+    const box = this.el.shareSummary;
+    box.replaceChildren();
+    box.classList.toggle('warn', warn);
+    for (const l of lines) {
+      const span = document.createElement('span');
+      span.textContent = l.text + (/[.!?]$/.test(l.text) ? ' ' : '. ');
+      if (l.warn) span.style.color = 'var(--warn)';
+      box.append(span);
+    }
+    if (note) box.append(document.createTextNode(note));
+  }
+
+  /** Put the link in a selectable field: the fallback when copying fails. */
+  showShareOutput(text) {
+    this.el.shareOut.value = text;
+    this.el.shareOutRow.hidden = !text;
+  }
+
+  /** Clipboard API first, then the old selection route. True if either worked. */
+  async copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      /* no permission, not focused, or no API: fall through */
+    }
+    try {
+      this.el.shareOut.value = text;
+      this.el.shareOutRow.hidden = false;
+      this.el.shareOut.focus();
+      this.el.shareOut.select();
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Ask before importing a pack that arrived by link: it is from a stranger.
+   * Resolves true only for an explicit Import; Cancel, Escape, or a second
+   * link arriving meanwhile resolve false. Falls back to window.confirm where
+   * <dialog> is missing (very old WebViews).
+   */
+  confirmSharedPack({ name, lines }) {
+    const dlg = this.el.shareConfirm;
+    if (typeof dlg.showModal !== 'function') {
+      return Promise.resolve(window.confirm(
+        `Import a shared pack?\n\n${name}\n${lines.map((l) => '\u2022 ' + l.text).join('\n')}`));
+    }
+    this._shareConfirmDone?.(false);
+    this.el.shareConfirmName.textContent = name;
+    const list = this.el.shareConfirmList;
+    list.replaceChildren();
+    for (const l of lines) {
+      const li = document.createElement('li');
+      li.textContent = l.text;
+      if (l.warn) li.className = 'warn';
+      list.append(li);
+    }
+    return new Promise((resolve) => {
+      const done = (ok) => {
+        if (this._shareConfirmDone !== done) return;
+        this._shareConfirmDone = null;
+        this.el.shareConfirmOk.onclick = null;
+        this.el.shareConfirmCancel.onclick = null;
+        dlg.onclose = null;
+        if (dlg.open) dlg.close();
+        resolve(ok);
+      };
+      this._shareConfirmDone = done;
+      this.el.shareConfirmOk.onclick = () => done(true);
+      this.el.shareConfirmCancel.onclick = () => done(false);
+      dlg.onclose = () => done(false);   // Escape
+      if (!dlg.open) dlg.showModal();
+      this.el.shareConfirmCancel.focus();
+    });
   }
 
   /* --------------------------------------------------------------- explore */

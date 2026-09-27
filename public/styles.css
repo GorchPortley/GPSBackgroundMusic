@@ -775,6 +775,75 @@ input[type="search"] {
 .paste-actions { display: flex; gap: 7px; margin-top: 7px; }
 .paste-actions .mini { flex: 1; text-align: center; }
 
+/* ----------------------------------------------------- share by link (P4) */
+
+.pack-row { flex-wrap: wrap; }
+.pack-row .mini { flex: 1 1 auto; white-space: nowrap; }
+
+.share-row { margin: 10px 0 14px; display: grid; gap: 8px; }
+.share-row .hint { margin: 0; }
+
+.share-field {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.share-field select, .share-field input[type="text"] {
+  width: 100%;
+  background: #0a1017;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 9px;
+}
+
+.share-check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.share-row .hint.warn { color: var(--warn); }
+
+.share-out textarea, .paste-row textarea { word-break: break-all; }
+.share-out textarea {
+  width: 100%;
+  background: #0a1017;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text);
+  font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.share-confirm {
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  width: min(420px, calc(100vw - 32px));
+}
+
+.share-confirm::backdrop { background: rgba(5, 8, 12, 0.72); }
+.share-confirm h3 { margin: 0 0 6px; font-size: 16px; }
+.share-confirm-name { margin: 0 0 8px; color: var(--accent); overflow-wrap: anywhere; }
+.share-confirm-list {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+.share-confirm-list .warn { color: var(--warn); }
+
 /* ---------------------------------------------------- theme held by a cue */
 
 .theme-held {

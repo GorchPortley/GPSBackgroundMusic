@@ -192,6 +192,8 @@
       <button type="button" id="exportPack" class="mini">Export pack</button>
       <button type="button" id="importPack" class="mini">Import pack</button>
       <button type="button" id="pasteToggle" class="mini">Paste</button>
+      <button type="button" id="shareToggle" class="mini"
+              title="Copy a link that carries the pack itself">Share link</button>
       <input type="file" id="importFile" accept="application/json,.json,text/plain" hidden>
     </div>
     <div class="example-row">
@@ -202,10 +204,31 @@
     <div class="paste-row" id="pasteRow" hidden>
       <label class="sr-only" for="pasteArea">Paste pack JSON</label>
       <textarea id="pasteArea" rows="4" spellcheck="false"
-                placeholder="Paste the contents of a pack .json file here"></textarea>
+                placeholder="Paste a pack .json, or a pack link / pack= code"></textarea>
       <div class="paste-actions">
         <button type="button" id="pasteApply" class="mini">Import pasted</button>
         <button type="button" id="pasteCancel" class="mini">Cancel</button>
+      </div>
+    </div>
+    <div class="share-row" id="shareRow" hidden>
+      <label class="share-field">What to share
+        <select id="shareScope"></select>
+      </label>
+      <label class="share-check">
+        <input type="checkbox" id="shareLocations">
+        <span id="shareLocationsLabel">Include my saved places (exact coordinates)</span>
+      </label>
+      <label class="share-field">Name, shown to whoever opens it
+        <input type="text" id="shareName" maxlength="80" autocomplete="off">
+      </label>
+      <p class="hint" id="shareSummary" aria-live="polite"></p>
+      <div class="paste-actions">
+        <button type="button" id="shareCopy" class="mini primary">Copy share link</button>
+        <button type="button" id="shareCancel" class="mini">Close</button>
+      </div>
+      <div class="share-out" id="shareOutRow" hidden>
+        <label class="sr-only" for="shareOut">Share link</label>
+        <textarea id="shareOut" rows="3" readonly spellcheck="false"></textarea>
       </div>
     </div>
     <p class="hint" id="packHint">Your tag edits, saved places and theme, as one file you can share.</p>
@@ -264,5 +287,16 @@
 </footer>
 
 <script type="module" src="/src/main.js"></script>
+<dialog id="shareConfirm" class="share-confirm" aria-labelledby="shareConfirmTitle">
+  <h3 id="shareConfirmTitle">Import a shared pack?</h3>
+  <p class="share-confirm-name" id="shareConfirmName"></p>
+  <ul class="share-confirm-list" id="shareConfirmList"></ul>
+  <p class="hint">Someone else made this. A pack is data: it can change the music
+    and add places, but cannot run anything. It is merged into what you have.</p>
+  <div class="paste-actions">
+    <button type="button" id="shareConfirmCancel" class="mini">Cancel</button>
+    <button type="button" id="shareConfirmOk" class="mini primary">Import</button>
+  </div>
+</dialog>
 </body>
 </html>

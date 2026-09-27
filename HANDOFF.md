@@ -98,7 +98,8 @@ browser; Node built-ins on the server. ~9,600 lines total.
 | `public/src/elevation.js` | Hills (P3): GPS altitude or Open-Meteo elevation (guarded, 2-dp grid corners cached per session, bilinear), smoothed history → grade | `ElevationSource`, `terrainFactors`, `describeTerrain`, `elevationUrl`, `cellCorners` |
 | `public/src/scene.js` | Places → mood. Emphasis, peak-pull, contrast, motion | `analyzePlaces`, `contextualise`, `sceneKey`, `lerpMood`, `topContributors`, `whyLine` (C4.1) |
 | `public/src/scenecontext.js` | The `scene` object cues and code themes query | `buildScene` → `{tagWeight(), categoryWeight(), nearest(), named()}` |
-| `public/src/store.js` | Pack load/save/sanitise. **The security boundary** | `sanitise`, `loadPack`, `savePack`, `clearStore` (C4.2), `firstRunDismissed` / `setFirstRunDismissed` (C4.4), `readPackFile` |
+| `public/src/store.js` | Pack load/save/sanitise. **The security boundary** (themes and cues are deep-copied without `__proto__`/`constructor`/`prototype` keys) | `sanitise`, `loadPack`, `savePack`, `clearStore` (C4.2), `firstRunDismissed` / `setFirstRunDismissed` (C4.4), `readPackFile` |
+| `public/src/share.js` | Pack links (P4): `#pack=` = base64url(deflate-raw(JSON)); decode with input and 256 KB output caps; what a pack holds, in words | `encodePack`, `decodePayload`, `extractPayload`, `shareBase`, `summarisePack`, `SHARE_LINK_MAX`, `PUBLIC_SHARE_BASE` |
 | `public/src/audio/engine.js` | AudioContext, master chain, transport, plan commits | `AudioEngine` (`onCommit` hook: the UI accent turns at the commit, C4.3), `STEPS_PER_BAR`, `BARS_PER_PHRASE` |
 | `public/src/audio/voices.js` | 18 synthesised instruments | `padVoice`, `bassVoice`, `pluckVoice`, `kick`, … |
 | `public/src/audio/ambience.js` | Ambience beds under the music (birds, water, traffic, murmur, rain), on `engine.ambienceGain` | `Ambience`, `AMBIENCE_KINDS` |
@@ -117,7 +118,7 @@ browser; Node built-ins on the server. ~9,600 lines total.
 | `server/index.js` | Static files + `/api/config`, `/api/places`, `/api/geocode` | — |
 | `server/places.js` | Google Places (New) `searchNearby`; type aliasing | `getNearbyPlaces`, `providerName` |
 | `server/osm.js` | Overpass query, bounding-box distance | `overpassNearby`, `geocode` |
-| `android/app/src/main/java/dev/gpsmusic/MainActivity.java` | WebView, asset interception, file picker, VIEW/SEND intents, JS bridge `AndroidHost` | — |
+| `android/app/src/main/java/dev/gpsmusic/MainActivity.java` | WebView, asset interception, file picker, VIEW/SEND intents (SEND text = a pack link/code, P4), JS bridge `AndroidHost` (`shareText` → share sheet) | — |
 | `android/app/src/main/java/dev/gpsmusic/PlaybackService.java` | Foreground service (`mediaPlayback\|location`) with notification | — |
 | `examples/*.json` | Shareable packs: `landmarks`, `ocarina`, `belmont-walk`, `cues-example` | — |
 | `tools/render-check.js`, `tools/jump-test.js` | Verification harnesses (see §4) | — |
@@ -810,9 +811,23 @@ example pack (C0.3). Dismiss stores a flag in `localStorage`.
 
 ## 6. Parking lot — ideas considered, not specified
 
-- **Share a pack by link** (`#pack=<base64>`): great for the sharing goal,
-  but URL length caps it at ~2 KB packs after compression; needs a
-  `CompressionStream` step. Do it only if people actually share.
+- ~~**Share a pack by link**~~ — **done (P4).** `public/src/share.js`.
+  "Share link" in the Anywhere panel: scope (everything / only what I made
+  here / themes only / one cue; a cue brings the imported theme it pins),
+  a name, and saved places **off unless ticked** (the panel also names every
+  cue bound to coordinates). `#pack=` = base64url(deflate-raw(compact
+  sanitised JSON)); links over `SHARE_LINK_MAX` 8 KB are refused with advice
+  to export a file (landmarks in full ≈ 4.1 KB, themes only ≈ 3.3 KB).
+  Import (load or `hashchange`): hash cleared with `replaceState` at once,
+  payload ≤ 32 KB, decompressed in 512-byte slices and cancelled past 256 KB,
+  then an in-page `<dialog>` confirm (name + counts; Cancel/Escape import
+  nothing), then `importPackText` — the same sanitise/validate path as a
+  paste. Paste accepts a link, `#pack=` or `pack=` code; so does a text
+  SEND intent on Android. In the APK there is no public origin, so it shares
+  a bare `pack=` code (plus `AndroidHost.shareText` → share sheet) unless
+  `PUBLIC_SHARE_BASE` is set; https VIEW links do not open the app (no
+  verified host to filter on). `sanitise` now strips unsafe keys at any depth
+  in themes and cues; packs may carry a display-only `name`.
 - ~~**Elevation → tension**~~ — **done (P3).** `public/src/elevation.js`,
   own toggle "Hills" (default off, not persisted). Height is GPS
   `coords.altitude` when the fix has one (accuracy ≤ 30 m or unstated), else
@@ -862,6 +877,7 @@ example pack (C0.3). Dismiss stores a flag in `localStorage`.
 {
   "version": 1,
   "_about": "free text, ignored",
+  "name": "…",                              // optional display label (share links, P4)
   "theme": "wanderer",                      // default theme id
   "tagOverrides": { "cafe": { "e": 0.6 } }, // partial mood per canonical type
   "locations": [{ "name": "…", "lat": 0, "lng": 0 }],

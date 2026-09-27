@@ -2,6 +2,7 @@ package dev.gpsmusic;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -218,6 +219,16 @@ public class MainActivity extends Activity {
         Uri uri = Intent.ACTION_SEND.equals(intent.getAction())
                 ? intent.getParcelableExtra(Intent.EXTRA_STREAM)
                 : intent.getData();
+        if (uri == null && Intent.ACTION_SEND.equals(intent.getAction())) {
+            // Shared *text* rather than a file: a pack link or `pack=` code
+            // (P4), or pasted JSON. The page's importPackText tells them apart,
+            // and a link is decoded, capped and confirmed there before import.
+            CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+            if (text != null && text.length() > 0 && text.length() <= 2 * 1024 * 1024) {
+                pendingPackJson = text.toString();
+            }
+            return;
+        }
         if (uri == null) return;
 
         try (InputStream in = getContentResolver().openInputStream(uri)) {
@@ -423,6 +434,30 @@ public class MainActivity extends Activity {
             boolean autoplay = pendingAutoplay;
             pendingAutoplay = false;
             return autoplay;
+        }
+
+        /**
+         * Open the system share sheet with a pack link or code (P4). The
+         * WebView has no navigator.share, and a pack code is only useful if it
+         * can leave the app.
+         */
+        @JavascriptInterface
+        public void shareText(String text) {
+            if (text == null || text.isEmpty() || text.length() > 64 * 1024) return;
+            runOnUiThread(() -> {
+                Intent send = new Intent(Intent.ACTION_SEND)
+                        .setType("text/plain")
+                        .putExtra(Intent.EXTRA_TEXT, text);
+                Intent chooser = Intent.createChooser(send, getString(R.string.share_pack));
+                // Not back to ourselves: the SEND filter would list this app.
+                chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, new ComponentName[]{
+                        new ComponentName(MainActivity.this, MainActivity.class)});
+                try {
+                    startActivity(chooser);
+                } catch (Exception ignored) {
+                    // No app to share to: the page already copied it.
+                }
+            });
         }
 
         /** Lets the page know it does not need a screen wake lock here. */

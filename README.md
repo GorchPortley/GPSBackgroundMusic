@@ -220,6 +220,39 @@ execute anything, which is what makes it safe to accept from a stranger.
 Imported files are validated field by field: out-of-range values are clamped,
 unknown keys dropped, oversized lists truncated.
 
+#### Sharing by link
+
+**Share link** (next to Export) puts the pack *in* a link:
+`https://<where the app is>/#pack=<data>`, where `<data>` is the pack's JSON
+compressed with raw DEFLATE and base64url-encoded. Choose what goes in —
+everything, only what you made here (your cues and tag edits), themes only, or
+a single cue — name it, and **Copy share link**. A cue that holds an imported
+theme brings that theme along. The panel shows what is included and how long
+the link is.
+
+- **Saved places are left out unless you tick them.** They are exact
+  coordinates and often include home. Cues bound to a spot are coordinates
+  too; the panel names every one that is, so you can pick a narrower choice.
+- **Links stop at 8 KB.** A fragment never reaches a server, but chat apps,
+  e-mail and share sheets are less forgiving. Every bundled example fits in
+  full (landmarks ≈ 4 KB). Past 8 KB the app says so and suggests Export pack.
+- **Opening a link** asks first — a shared pack is from someone else — and
+  shows its name and what it holds; Cancel imports nothing. The `#pack=` is
+  removed from the address straight away, so a reload never imports twice.
+  Links that are damaged, cut short, or that would unpack to more than 256 KB
+  are refused with a message.
+- **Paste** accepts a link, a `#pack=…` fragment or a bare `pack=…` code as
+  well as JSON.
+- **In the Android app** there is no public address to link to (the app runs
+  from `appassets.androidplatform.net`, which exists only on the device), so
+  Share link copies a `pack=…` code and opens Android's share sheet. The
+  recipient pastes it into **Paste**, or shares it straight to GPS Music.
+  Whoever builds the APK can set `PUBLIC_SHARE_BASE` in `public/src/share.js`
+  to where `public/` is hosted to get real links instead. Tapping a link does
+  not open the app — it opens the web app in the browser.
+- Needs `CompressionStream` (Chrome/Edge 103+, Firefox 113+, Safari 16.4+);
+  older browsers get a message saying so.
+
 ---
 
 ## Themes
@@ -386,6 +419,7 @@ public/
     scene.js    places -> mood vector, scene naming
     tags.js     place type -> mood profile table, aliases, user overrides
     store.js    pack persistence, validation, export/import
+    share.js    pack links: #pack= encode/decode, size caps
     ui.js       DOM + radar canvas
     audio/
       engine.js   master chain, effects, continuous layers, scheduler
@@ -433,4 +467,6 @@ is on (also off by default) and your phone's GPS gives no altitude, the
 grid points around you at two decimal places (about 1 km apart) go to
 Open-Meteo's elevation endpoint, once per grid cell per session. Nothing is stored,
 logged to disk, or sent anywhere else, and no audio is recorded. Saved places and tag edits live in your browser's local
-storage and are only shared if you export a pack yourself.
+storage and are only shared if you export a pack yourself. A share link
+carries only what you chose in the share panel — saved places only if you
+tick them — and, as a `#` fragment, is never sent to any server by the browser.

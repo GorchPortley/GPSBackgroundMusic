@@ -138,12 +138,21 @@ export function sanitise(input) {
     pack.theme = input.theme;
   }
 
+  // A label for a shared pack (P4), shown in the import confirm. Display
+  // text only — always rendered through textContent — and never merged into
+  // the stored pack by applyPack.
+  if (typeof input.name === 'string') {
+    const name = input.name.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 80);
+    if (name) pack.name = name;
+  }
+
   // Theme specs are only structurally checked here — size and shape. Their
   // real validation is validateSpec() at registration time, which knows what
   // a voice and a pattern are and reports what is wrong with each.
   if (Array.isArray(input.themes)) {
-    for (const spec of input.themes.slice(0, MAX_THEMES)) {
+    for (let spec of input.themes.slice(0, MAX_THEMES)) {
       if (!spec || typeof spec !== 'object' || Array.isArray(spec)) continue;
+      spec = stripUnsafe(spec, 0);
       if (typeof spec.id !== 'string' || !spec.id || spec.id.length > 48) continue;
       if (typeof spec.name !== 'string' || !spec.name) continue;
       // Refuse anything absurd rather than letting it into localStorage.
@@ -163,6 +172,7 @@ export function sanitise(input) {
   if (Array.isArray(input.cues)) {
     for (let cue of input.cues.slice(0, MAX_CUES)) {
       if (!cue || typeof cue !== 'object' || Array.isArray(cue)) continue;
+      cue = stripUnsafe(cue, 0);
       if (typeof cue.name !== 'string' || !cue.name || cue.name.length > 80) continue;
       if ('_ui' in cue && cue._ui !== true) {
         const { _ui, ...rest } = cue;
@@ -222,6 +232,29 @@ function cleanCondition(cond, depth) {
       if (Number.isFinite(edge)) clean.edge = Math.min(5000, Math.max(1, edge));
       out.inside = clean;
     }
+  }
+  return out;
+}
+
+/**
+ * A copy of a theme or cue with every `__proto__` / `constructor` /
+ * `prototype` key removed, at any depth. JSON.parse makes `"__proto__"` an
+ * ordinary own key, harmless until something copies it with Object.assign or
+ * a `[k] =` loop and it becomes a prototype. Themes and cues are otherwise
+ * passed through structurally, so they are cleaned here once, before storage.
+ * Past MAX_NEST levels (no real spec comes close) the branch is emptied.
+ */
+const MAX_NEST = 32;
+function stripUnsafe(value, depth) {
+  if (Array.isArray(value)) {
+    return depth >= MAX_NEST ? [] : value.map((v) => stripUnsafe(v, depth + 1));
+  }
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  if (depth >= MAX_NEST) return out;
+  for (const [k, v] of Object.entries(value)) {
+    if (UNSAFE_KEYS.has(k)) continue;
+    out[k] = stripUnsafe(v, depth + 1);
   }
   return out;
 }

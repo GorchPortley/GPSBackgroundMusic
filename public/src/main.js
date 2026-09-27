@@ -36,6 +36,10 @@ import {
 import { UI } from './ui.js';
 import { WeatherSource, weatherFactors } from './weather.js';
 import { ElevationSource } from './elevation.js';
+import {
+  decodePayload, encodePack, extractPayload, SHARE_LINK_MAX, shareBase, ShareError,
+  shareSupported, summarisePack, UNSUPPORTED_MESSAGE,
+} from './share.js';
 
 const REPLAN_MS = 1500;
 /** Fraction of a step the smoothed mood takes toward the target each replan. */
@@ -175,6 +179,9 @@ class App {
       onExportPack: () => this.exportPack(),
       onImportPack: (file) => this.importPack(file),
       onPastePack: (text) => this.importPackText(text),
+      onShareOpen: () => this.openShare(),
+      onShareChange: (opts) => this.previewShare(opts),
+      onShareCopy: (opts) => this.copyShareLink(opts),
       onExamplePack: (file, name) => this.importExample(file, name),
       onTagEdit: (type, dim, value) => this.editTag(type, dim, value),
       onTagReset: (type) => this.resetTag(type),
@@ -223,6 +230,10 @@ class App {
     this.syncHostFences();
     this.checkHostAutoplay();
     this.setupMediaSession();
+
+    // A pack link (P4): on load, and when a link is opened in this tab.
+    this.checkShareHash();
+    window.addEventListener('hashchange', () => this.checkShareHash());
 
     setInterval(() => this.replan(), REPLAN_MS);
     setInterval(() => {
@@ -442,6 +453,12 @@ class App {
       this.ui.setPackHint('Nothing pasted.');
       return;
     }
+    // A share link, `#pack=…` or a bare `pack=…` code (P4) rather than
+    // JSON: decode it, confirm, then come back here with the JSON.
+    if (!/^[{[]/.test(trimmed) && extractPayload(trimmed) !== null) {
+      this.importShared(trimmed);
+      return true;
+    }
     try {
       this.applyPack(sanitise(JSON.parse(trimmed)));
       this.ui.hidePaste();
@@ -450,6 +467,216 @@ class App {
       this.ui.setPackHint(`That is not a valid pack: ${err.message}`);
       return false;
     }
+  }
+
+  /* ------------------------------------------------------- share by link */
+
+  /** Choices for "What to share", each with a default name for the link. */
+  shareScopes() {
+    const cues = this.cues.map((c) => c.spec);
+    const themes = customSpecs();
+    const tagEdits = Object.keys(this.pack.tagOverrides || {}).length;
+    const scopes = [{ value: 'all', label: 'Everything (themes, cues, tag edits, theme)', name: 'My GPS Music pack' }];
+    const mine = cues.filter((c) => c._ui === true).length;
+    if (mine || tagEdits) {
+      scopes.push({ value: 'mine', label: `Only what I made here (${mine} cue${mine === 1 ? '' : 's'}, ${tagEdits} tag edit${tagEdits === 1 ? '' : 's'})`, name: 'My cues and tag edits' });
+    }
+    if (themes.length) {
+      scopes.push({ value: 'themes', label: `Themes only (${themes.length})`, name: themes.length === 1 ? themes[0].name : `${themes.length} themes` });
+    }
+    cues.forEach((c, i) => scopes.push({ value: `cue:${i}`, label: `One cue: ${c.name}`, name: c.name }));
+    return scopes;
+  }
+
+  openShare() {
+    if (!shareSupported()) {
+      this.ui.setPackHint(UNSUPPORTED_MESSAGE);
+      return;
+    }
+    this.ui.openShare({ scopes: this.shareScopes(), places: this.pack.locations.length });
+  }
+
+  /**
+   * The pack a link will carry, sanitised. Saved places only when asked for.
+   * A cue that holds a custom theme brings that theme with it, or the pin
+   * would hold nothing on the other side.
+   */
+  buildSharePack({ scope = 'all', locations = false, name = '' } = {}) {
+    const cues = this.cues.map((c) => c.spec);
+    const themes = customSpecs();
+    let pickCues = [];
+    let pickThemes = [];
+    let tagOverrides = {};
+    let theme = null;
+    if (scope === 'all') {
+      pickCues = cues;
+      pickThemes = [...themes];
+      tagOverrides = this.pack.tagOverrides;
+      theme = this.pack.theme;
+    } else if (scope === 'mine') {
+      pickCues = cues.filter((c) => c._ui === true);
+      tagOverrides = this.pack.tagOverrides;
+    } else if (scope === 'themes') {
+      pickThemes = [...themes];
+    } else if (/^cue:\d+$/.test(scope)) {
+      const cue = cues[Number(scope.slice(4))];
+      if (cue) pickCues = [cue];
+    }
+    for (const c of pickCues) {
+      const t = c.theme && themes.find((s) => s.id === c.theme);
+      if (t && !pickThemes.includes(t)) pickThemes.push(t);
+    }
+    const pack = sanitise({
+      version: 1,
+      name: name || undefined,
+      tagOverrides,
+      locations: locations ? this.pack.locations : [],
+      themes: pickThemes,
+      cues: pickCues,
+      theme,
+    });
+    // Leave out what is empty: every byte is a byte of URL.
+    for (const k of Object.keys(pack)) {
+      const v = pack[k];
+      if (v === null || (Array.isArray(v) && !v.length) ||
+          (v && typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length)) delete pack[k];
+    }
+    return pack;
+  }
+
+  /** Pack → { text, bare }: a link, or a bare `pack=` code where no link can work. */
+  async makeShareLink(opts) {
+    const pack = this.buildSharePack(opts);
+    const payload = await encodePack(pack);
+    const base = shareBase();
+    return { pack, text: base ? `${base}#pack=${payload}` : `pack=${payload}`, bare: !base };
+  }
+
+  /** Summary and size for the share panel, before anything is copied. */
+  async previewShare(opts) {
+    const seq = (this._shareSeq = (this._shareSeq || 0) + 1);
+    let made;
+    try {
+      made = await this.makeShareLink(opts);
+    } catch (err) {
+      this.ui.setShareSummary({ note: `Could not build the link: ${err.message}`, warn: true });
+      return;
+    }
+    if (seq !== this._shareSeq) return;
+    const { lines, total } = summarisePack(made.pack);
+    if (!total) {
+      this.ui.setShareSummary({ note: 'Nothing to share in that selection.', warn: true });
+      return;
+    }
+    if (!opts.locations && this.pack.locations.length) {
+      lines.push({ text: `Not included: ${this.pack.locations.length} saved place${this.pack.locations.length === 1 ? '' : 's'}` });
+    }
+    const size = made.text.length;
+    const over = size > SHARE_LINK_MAX;
+    this.ui.setShareSummary({
+      lines,
+      warn: over,
+      note: over
+        ? `This link would be ${formatKb(size)} \u2014 more than the ${formatKb(SHARE_LINK_MAX)} that travels reliably through chat apps. Share less, or use Export pack and send the file.`
+        : `Link: ${formatKb(size)}.`,
+    });
+  }
+
+  /**
+   * Copy the link. Over SHARE_LINK_MAX it is not produced at all: a link that
+   * arrives cut short is worse than no link. In the Android app it also opens
+   * the system share sheet (AndroidHost.shareText) where the host has one.
+   */
+  async copyShareLink(opts) {
+    if (!shareSupported()) {
+      this.ui.setShareSummary({ note: UNSUPPORTED_MESSAGE, warn: true });
+      return;
+    }
+    let made;
+    try {
+      made = await this.makeShareLink(opts);
+    } catch (err) {
+      this.ui.setShareSummary({ note: `Could not build the link: ${err.message}`, warn: true });
+      return;
+    }
+    const { lines, total } = summarisePack(made.pack);
+    if (!total) {
+      this.ui.setShareSummary({ note: 'Nothing to share in that selection.', warn: true });
+      return;
+    }
+    if (made.text.length > SHARE_LINK_MAX) {
+      this.ui.showShareOutput('');
+      this.ui.setShareSummary({
+        lines,
+        warn: true,
+        note: `Not copied: this link would be ${formatKb(made.text.length)}, over the ${formatKb(SHARE_LINK_MAX)} limit. Share less, or use Export pack and send the file.`,
+      });
+      return;
+    }
+    this.ui.showShareOutput(made.text);
+    const copied = await this.ui.copyText(made.text);
+    let note = copied
+      ? `Copied (${formatKb(made.text.length)}).`
+      : 'Could not copy automatically \u2014 select the link below and copy it.';
+    if (made.bare) {
+      note += ' This app has no public web address to link to, so this is a pack code: ' +
+        'they paste it into Anywhere \u2192 Paste, or share it to GPS Music.';
+    } else if (/^(localhost|127\.|\[::1\])/.test(location.hostname)) {
+      note += ' Note: it points at this computer (localhost), so it only opens here.';
+    }
+    this.ui.setShareSummary({ lines, note });
+    try {
+      window.AndroidHost?.shareText?.(made.text);
+    } catch {
+      /* not in the wrapper, or an older one without shareText */
+    }
+  }
+
+  /**
+   * `#pack=…` in the address: take it out of the address first, so a reload
+   * (or the back button) cannot import it again, then decode and confirm.
+   */
+  checkShareHash() {
+    const hash = location.hash;
+    if (!hash.startsWith('#pack=')) return;
+    history.replaceState(null, '', location.pathname + location.search);
+    this.importShared(hash);
+  }
+
+  /**
+   * A pack from a link (or a pasted link / code). Decoded with a size cap,
+   * shown to the person, and only on Import handed to importPackText — the
+   * same sanitise + validate path as a pasted file.
+   */
+  async importShared(text) {
+    const payload = extractPayload(text);
+    if (payload === null) return false;
+    const fail = (msg) => {
+      this.ui.setPackHint(msg);
+      this.ui.setStatus(msg, 'error');
+      return true;
+    };
+    if (!shareSupported()) return fail(UNSUPPORTED_MESSAGE);
+    let json;
+    let preview;
+    try {
+      json = await decodePayload(payload);
+      preview = sanitise(JSON.parse(json));
+    } catch (err) {
+      return fail(err instanceof ShareError
+        ? err.message : 'That pack link is damaged (what it holds is not a pack).');
+    }
+    const { lines, total } = summarisePack(preview);
+    if (!total) return fail('That pack link holds nothing this app can use.');
+    const name = preview.name || 'Unnamed pack';
+    const ok = await this.ui.confirmSharedPack({ name, lines });
+    if (!ok) {
+      this.ui.setPackHint('Shared pack not imported.');
+      this.ui.setStatus('Shared pack not imported.');
+      return true;
+    }
+    if (this.importPackText(json)) this.ui.setStatus(`Imported \u201c${name}\u201d.`);
+    return true;
   }
 
   /** The bundled example packs (public/packs/), listed in the Anywhere panel. */
@@ -1349,6 +1576,11 @@ function isEditableCue(cue) {
   return cue?._ui === true && !!near &&
     Number.isFinite(near.lat) && Number.isFinite(near.lng) &&
     Object.keys(cue.when).every((k) => k === 'near');
+}
+
+/** 5321 → "5.2 KB"; under 1 KB in bytes. */
+function formatKb(n) {
+  return n < 1024 ? `${n} bytes` : `${(n / 1024).toFixed(1)} KB`;
 }
 
 /**

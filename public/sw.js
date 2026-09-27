@@ -12,7 +12,7 @@
  *      rather than going silent.
  */
 
-const VERSION = 'v25';
+const VERSION = 'v26';
 const SHELL = `shell-${VERSION}`;
 const PLACES = `places-${VERSION}`;
 
@@ -31,6 +31,7 @@ const SHELL_FILES = [
   '/src/scenecontext.js',
   '/src/tags.js',
   '/src/store.js',
+  '/src/share.js',
   '/src/provider.js',
   '/src/osm-tags.js',
   '/src/weather.js',

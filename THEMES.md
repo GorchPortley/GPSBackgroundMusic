@@ -536,6 +536,16 @@ Spec themes and cues travel in a **pack** — the same JSON file that carries
 your tag edits and saved places. Export from the Anywhere panel, send the file, they
 import it.
 
+Or send a **link**: **Share link** in the Anywhere panel packs the themes (or a
+single cue, or everything) into `…/#pack=<data>` — the JSON, raw-DEFLATE
+compressed and base64url-encoded. Opening it asks before importing and then
+takes exactly the same path as a pasted file: `sanitise()`, then
+`validateSpec` / `validateCue`. Links are capped at 8 KB (a theme is typically
+300–700 bytes compressed, so the six landmarks themes make a ~3.3 KB link) and
+unpack to at most 256 KB. Saved places are left out unless ticked. In the
+Android app the share is a bare `pack=…` code, which **Paste** accepts. The
+README's "Sharing by link" has the details.
+
 Imported themes are validated before use: unknown voices, malformed patterns,
 reserved names and id collisions with built-ins are all rejected with a message
 naming the layer at fault. A broken theme is skipped, never allowed to take the

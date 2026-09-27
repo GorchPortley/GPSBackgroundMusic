@@ -14,4 +14,5 @@
     <string name="notification_wake_generic">At a place you bound</string>
     <string name="notification_wake_tap">Tap to start the music</string>
     <string name="pick_pack">Choose a pack file</string>
+    <string name="share_pack">Share pack</string>
 </resources>
