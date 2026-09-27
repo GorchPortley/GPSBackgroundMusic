@@ -98,7 +98,7 @@ browser; Node built-ins on the server. ~9,600 lines total.
 | `public/src/scenecontext.js` | The `scene` object cues and code themes query | `buildScene` → `{tagWeight(), categoryWeight(), nearest(), named()}` |
 | `public/src/store.js` | Pack load/save/sanitise. **The security boundary** | `sanitise`, `loadPack`, `savePack`, `readPackFile` |
 | `public/src/audio/engine.js` | AudioContext, master chain, transport, plan commits | `AudioEngine`, `STEPS_PER_BAR`, `BARS_PER_PHRASE` |
-| `public/src/audio/voices.js` | 16 synthesised instruments | `padVoice`, `bassVoice`, `pluckVoice`, `kick`, … |
+| `public/src/audio/voices.js` | 17 synthesised instruments | `padVoice`, `bassVoice`, `pluckVoice`, `kick`, … |
 | `public/src/audio/theory.js` | Scales, modes, progressions, seeded RNG | `scaleNote`, `chordNotes`, `pickMode`, `mulberry32`, `hashString` |
 | `public/src/themes/index.js` | Theme registry, custom spec registration | `getTheme`, `allThemes`, `registerSpecs`, `customSpecs`, `removeCustom` |
 | `public/src/themes/spec.js` | Declarative theme format → theme | `VOICES`, `validateSpec`, `themeFromSpec`, `stepLayers` |
@@ -848,6 +848,7 @@ example pack (C0.3). Dismiss stores a flag in `localStorage`.
 | `flute` | pitched | 0.09 | breathy lead |
 | `pulse` | pitched | 0.085 | chiptune / accordion (duty) |
 | `blip` | pitched | 0.05 | tiny sine pip |
+| `fm` | pitched | 0.08 | two-op FM: e-piano / bell / glass (`ratio`, `index`, `decay`) |
 | `kick`, `hat`, `shaker`, `rim`, `clank`, `brush`, `sweep` | unpitched | 0.38 / 0.05 / 0.035 / 0.08 / 0.09 / 0.05 / 0.06 | percussion & fx |
 
 Parameters per voice are in THEMES.md §4. Chordal voices take `chordSize`;

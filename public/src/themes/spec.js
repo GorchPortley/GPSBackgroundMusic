@@ -25,7 +25,7 @@ import {
   chordNotes, mulberry32, noteName, pickMode, pickProgression, scaleNote,
 } from '../audio/theory.js';
 import {
-  bassVoice, bellVoice, blipVoice, brush, clank, fluteVoice, hat, kick,
+  bassVoice, bellVoice, blipVoice, brush, clank, fluteVoice, fmVoice, hat, kick,
   padVoice, pizzVoice, pluckVoice, pulseVoice, rim, shaker, stringVoice,
   sweepVoice,
 } from '../audio/voices.js';
@@ -53,6 +53,7 @@ export const VOICES = {
   flute: { kind: 'pitched', gain: 0.09, play: (io, o) => fluteVoice(io, o) },
   pulse: { kind: 'pitched', gain: 0.085, play: (io, o) => pulseVoice(io, o) },
   blip: { kind: 'pitched', gain: 0.05, play: (io, o) => blipVoice(io, o) },
+  fm: { kind: 'pitched', gain: 0.08, play: (io, o) => fmVoice(io, o) },
   kick: { kind: 'unpitched', gain: 0.38, play: (io, o) => kick(io, o) },
   hat: { kind: 'unpitched', gain: 0.05, play: (io, o) => hat(io, o) },
   shaker: { kind: 'unpitched', gain: 0.035, play: (io, o) => shaker(io, o) },
@@ -63,7 +64,7 @@ export const VOICES = {
 };
 
 /** Voices that take `dur`; the rest are one-shots with their own decay. */
-const SUSTAINED = new Set(['pad', 'strings', 'bass', 'pulse', 'flute']);
+const SUSTAINED = new Set(['pad', 'strings', 'bass', 'pulse', 'flute', 'fm']);
 
 const DEFAULT_MODES = [
   'phrygian', 'aeolian', 'minorPentatonic', 'dorian',

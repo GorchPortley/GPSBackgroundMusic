@@ -226,6 +226,7 @@ within the step rather than stacking, so `"0*32"` articulates properly.
 | `flute` | pitched | `breath`, `vibrato`, `reverb` |
 | `pulse` | pitched | `duty` (0.5 hollow, 0.25 nasal, 0.125 thin), `cutoff`, `resonance`, `glideFrom`, `vibrato`, `pan` |
 | `blip` | pitched | `decay`, `duty`, `bend` — short chirps |
+| `fm` | pitched | `ratio` (0.25–12, default 2), `index` (0–12, default 2), `decay` (index envelope, s), `release`, `reverb`, `pan` — two-operator FM that holds for `dur`. `ratio: 1` electric piano, `3.5` with `index: 3, decay: 0.4` a bell, `7` glassy |
 | `kick` | drum | `tone` |
 | `hat` | drum | `decay` |
 | `shaker` | drum | `decay` |

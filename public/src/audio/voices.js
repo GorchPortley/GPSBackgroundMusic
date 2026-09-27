@@ -259,6 +259,80 @@ export function bellVoice(io, {
   route(io, out, end, { reverb, delay });
 }
 
+/** Finite number or the default — pack params can be anything. */
+function finite(v, d) { return Number.isFinite(v) ? v : d; }
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+/**
+ * General two-operator FM: sine modulator at `f * ratio` → depth gain →
+ * carrier.frequency. Unlike `bell` it holds for `dur` and releases, so it can
+ * be an electric piano (`ratio: 1`), a bell (`3.5`) or a glassy lead (`7`).
+ * `index` is the peak modulation depth in multiples of the carrier frequency;
+ * it falls to 5% of that over `decay` seconds, which is what turns the struck
+ * clang into a purer tone.
+ */
+export function fmVoice(io, {
+  note, time, dur, gain = 0.08, ratio = 2, index = 2, decay = 0.6,
+  release = 0.3, reverb = 0.3, delay = 0, pan = 0,
+}) {
+  const ctx = io.ctx;
+  const freq = midiToFreq(note);
+  if (!Number.isFinite(freq) || !Number.isFinite(time)) return;
+
+  const d = clamp(finite(dur, 0.5), 0.02, 30);
+  const peak = Math.max(0, finite(gain, 0.08));
+  const r = clamp(finite(ratio, 2), 0.25, 12);
+  const idx = clamp(finite(index, 2), 0, 12);
+  const dec = clamp(finite(decay, 0.6), 0.01, 30);
+  const rel = clamp(finite(release, 0.3), 0.01, 10);
+  const p = clamp(finite(pan, 0), -1, 1);
+  const end = time + d + rel + 0.1;
+
+  const out = ctx.createGain();
+  const attack = Math.min(0.005, d * 0.5);
+  out.gain.setValueAtTime(SILENCE, time);
+  out.gain.linearRampToValueAtTime(Math.max(SILENCE, peak), time + attack);
+  out.gain.setValueAtTime(Math.max(SILENCE, peak), time + d);
+  out.gain.exponentialRampToValueAtTime(SILENCE, time + d + rel);
+
+  const carrier = ctx.createOscillator();
+  carrier.type = 'sine';
+  carrier.frequency.value = freq;
+
+  const modulator = ctx.createOscillator();
+  modulator.type = 'sine';
+  modulator.frequency.value = freq * r;
+
+  const modDepth = ctx.createGain();
+  if (idx > 0) {
+    modDepth.gain.setValueAtTime(idx * freq, time);
+    modDepth.gain.exponentialRampToValueAtTime(idx * freq * 0.05, time + dec);
+  } else {
+    modDepth.gain.value = 0;
+  }
+  modulator.connect(modDepth).connect(carrier.frequency);
+
+  let panner = null;
+  if (p !== 0 && ctx.createStereoPanner) {
+    panner = ctx.createStereoPanner();
+    panner.pan.value = p;
+    carrier.connect(panner).connect(out);
+  } else {
+    carrier.connect(out);
+  }
+
+  modulator.start(time); modulator.stop(end);
+  carrier.start(time); carrier.stop(end);
+  carrier.onended = () => {
+    try {
+      modulator.disconnect(); modDepth.disconnect(); carrier.disconnect();
+      if (panner) panner.disconnect();
+    } catch { /* already gone */ }
+  };
+
+  route(io, out, end, { reverb, delay });
+}
+
 /* -------------------------------------------------------------- percussion */
 
 export function kick(io, { time, gain = 0.5, tone = 130 }) {
