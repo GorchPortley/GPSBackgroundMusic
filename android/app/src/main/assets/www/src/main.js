@@ -18,7 +18,9 @@ import {
 import {
   categoryFor, clearTagOverride, getTagOverrides, setTagOverride, setTagOverrides,
 } from './tags.js';
-import { downloadPack, loadPack, readPackFile, sanitise, savePack } from './store.js';
+import {
+  clearStore, downloadPack, emptyPack, loadPack, readPackFile, sanitise, savePack,
+} from './store.js';
 import * as provider from './provider.js';
 import { buildScene, emptyScene } from './scenecontext.js';
 import {
@@ -28,7 +30,7 @@ import { describeCondition } from './themes/match.js';
 import { LOOP_PRESETS } from './themes/presets/loops.js';
 import { hashString } from './audio/theory.js';
 import {
-  customSpecs, DEFAULT_THEME_ID, getTheme, registerSpecs,
+  allThemes, customSpecs, DEFAULT_THEME_ID, getTheme, registerSpecs, removeCustom,
 } from './themes/index.js';
 import { UI } from './ui.js';
 import { WeatherSource, weatherFactors } from './weather.js';
@@ -147,6 +149,10 @@ class App {
       onEditCue: (name) => this.editCue(name),
       onCueSave: (values) => this.saveCue(values),
       onCueDelete: (name) => this.deleteCue(name ?? this.cueDraft?.editing),
+      onCueRemove: (index) => this.removeCue(index),
+      onThemeRemove: (id) => this.removeTheme(id),
+      onTagResetAll: () => this.resetAllTags(),
+      onResetEverything: () => this.resetEverything(),
       onCueCancel: () => { this.cueDraft = null; },
       onExportPack: () => this.exportPack(),
       onImportPack: (file) => this.importPack(file),
@@ -187,6 +193,7 @@ class App {
     this.ui.renderSaved(this.pack.locations);
     this.renderCueList();
     this.ui.refreshThemes(this.theme.id);
+    this.renderPackManager();
     this.applyVolume();
 
     this.loadConfig();
@@ -349,6 +356,7 @@ class App {
       ...this.pack.locations.filter((l) => !same(l))].slice(0, 50);
     savePack(this.pack);
     this.ui.renderSaved(this.pack.locations);
+    this.renderPackManager();
     this.ui.setStatus(`Saved ${name}.`);
   }
 
@@ -356,6 +364,7 @@ class App {
     this.pack.locations.splice(index, 1);
     savePack(this.pack);
     this.ui.renderSaved(this.pack.locations);
+    this.renderPackManager();
   }
 
   /* ------------------------------------------------------------------ pack */
@@ -479,7 +488,6 @@ class App {
         this.pack.cues = merged;
         this.cues = built.cues;
         this.reportCues(built.report);
-        this.syncHostFences();
       }
 
       // Themes: install, then keep only the ones that actually compiled.
@@ -514,8 +522,11 @@ class App {
         `Imported ${Object.keys(incoming.tagOverrides).length} tag edits, ` +
         `${incoming.locations.length} places${this.themeNote || ''}.`);
       this.ui.renderSaved(this.pack.locations);
-      // After the themes are installed, so a pinned pack theme shows its name.
+      // After the themes are installed, so a pinned pack theme shows its name
+      // and its fence is not skipped as pinning a missing theme.
       this.renderCueList();
+      this.renderPackManager();
+      if (incoming.cues?.length) this.syncHostFences();
     }
   }
 
@@ -634,6 +645,7 @@ class App {
     this.rebuildCues(draft.editing && draft.editing !== name
       ? { from: draft.editing, to: name } : null);
     this.syncHostFences();
+    this.renderPackManager();
     this.cueDraft = null;
     this.ui.closeCueEditor();
     this.ui.setStatus(`Saved cue \u201c${name}\u201d.`);
@@ -643,18 +655,30 @@ class App {
     this.replan(true);
   }
 
+  /** The editor's Delete: an editable cue, by name. */
   deleteCue(name) {
     const at = this.pack.cues.findIndex((c) => c.name === name && isEditableCue(c));
-    if (at < 0) return;
-    this.pack.cues.splice(at, 1);
+    if (at >= 0) this.removeCue(at);
+  }
+
+  /**
+   * Remove any cue \u2014 made here or from a pack \u2014 by its index in
+   * `this.pack.cues`. Persists, recompiles (survivors keep their strength and
+   * latch), re-syncs the Android fences, and replans; a loop that was sounding
+   * fades out through the usual cue smoothing.
+   */
+  removeCue(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= this.pack.cues.length) return;
+    const [cue] = this.pack.cues.splice(index, 1);
     savePack(this.pack);
     this.rebuildCues();
     this.syncHostFences();
-    if (this.cueDraft?.editing === name) {
+    if (this.cueDraft?.editing === cue.name) {
       this.cueDraft = null;
       this.ui.closeCueEditor();
     }
-    this.ui.setStatus(`Deleted cue \u201c${name}\u201d.`);
+    this.renderPackManager();
+    this.ui.setStatus(`Removed cue \u201c${cue.name}\u201d.`);
     this.replan(true);
   }
 
@@ -681,14 +705,105 @@ class App {
   renderCueList() {
     this.ui.renderCueList(this.cues.map((c) => ({
       name: c.name,
+      // Where it sits in the pack, for Remove (rejected cues are not listed).
+      index: this.pack.cues.indexOf(c.spec),
       description: describeCondition(c.when),
       does: [
-        c.theme ? `plays ${getTheme(c.theme).id === c.theme ? getTheme(c.theme).name : c.theme}` : null,
+        c.theme ? (this.hasTheme(c.theme)
+          ? `plays ${getTheme(c.theme).name}`
+          : `would play ${c.theme} (theme not installed)`) : null,
         c.layers.length ? `adds ${c.layers.map((l) => l.name || l.voice).join(', ')}` : null,
       ].filter(Boolean).join(', '),
       editable: isEditableCue(c.spec),
       strength: c.strength,
     })));
+  }
+
+  /** Is a theme with this id installed and playable right now? */
+  hasTheme(id) {
+    return allThemes().some((t) => t.id === id && t.available);
+  }
+
+  /* ---------------------------------------------------------- pack manager */
+
+  /** What has been imported or edited, for the "Manage" panel. */
+  renderPackManager() {
+    const specs = customSpecs();
+    this.ui.renderPackManager({
+      themes: specs.map((s) => ({
+        id: s.id,
+        name: s.name,
+        // Cues that pin it: they stay, but go quiet on the theme once it is gone.
+        pinnedBy: this.pack.cues.filter((c) => c.theme === s.id).length,
+      })),
+      tagEdits: Object.keys(this.pack.tagOverrides || {}).length,
+      cues: this.pack.cues.length,
+      places: this.pack.locations.length,
+    });
+  }
+
+  /**
+   * Remove an imported theme. If it was the chosen (or saved default) theme,
+   * fall back to the built-in default. Cues that pin it are kept — their
+   * `theme` still names it, so re-importing the theme brings them back — but
+   * a pin to a theme that is not installed is ignored (see replan), and its
+   * wake-up fence is withdrawn. The engine keeps the old theme object until
+   * the next phrase boundary, like any other theme change.
+   */
+  removeTheme(id) {
+    if (!customSpecs().some((s) => s.id === id)) return;
+    const name = getTheme(id).name;
+    removeCustom(id);
+    this.pack.themes = this.pack.themes.filter((t) => t.id !== id);
+    if (this.pack.theme === id) this.pack.theme = null;
+    if (this.theme.id === id) this.theme = getTheme(DEFAULT_THEME_ID);
+    savePack(this.pack);
+    this.lastPlanKey = null;
+    this.ui.refreshThemes(this.theme.id);
+    this.renderCueList();
+    this.renderPackManager();
+    this.syncHostFences();
+    this.ui.setStatus(`Removed theme “${name}”.`);
+    this.replan(true);
+  }
+
+  /** Every tag edit, at once — the per-tag Reset, for all of them. */
+  resetAllTags() {
+    const n = Object.keys(this.pack.tagOverrides || {}).length;
+    setTagOverrides({});
+    this.pack.tagOverrides = {};
+    savePack(this.pack);
+    this.renderPackManager();
+    this.ui.setStatus(`Reset ${n} tag edit${n === 1 ? '' : 's'}.`);
+    this.reanalyse();
+  }
+
+  /**
+   * Factory state: forget the pack and every localStorage key the app owns,
+   * uninstall imported themes, drop all cues (and the Android fences), and go
+   * back to the default theme. Session-only settings — volume, ambience, pace
+   * lock, weather, where you are standing — are not stored and are left as they are.
+   */
+  resetEverything() {
+    for (const spec of customSpecs()) removeCustom(spec.id);
+    clearStore();
+    this.pack = emptyPack();
+    setTagOverrides({});
+    this.theme = getTheme(DEFAULT_THEME_ID);
+    this.lastPlanKey = null;
+    this.cueDraft = null;
+    this.ui.closeCueEditor();
+    this.cues = compileCues(this.pack.cues).cues;
+    this.syncHostFences();
+    this.ui.refreshThemes(this.theme.id);
+    this.ui.renderSaved(this.pack.locations);
+    this.renderCueList();
+    this.renderPackManager();
+    this.ui.setPackHint('Everything reset — back to how the app was installed.');
+    this.ui.setStatus('Reset everything.');
+    // Re-derive the scene without the tag edits; replans even with no places yet.
+    if (this.places) this.reanalyse();
+    else this.replan(true);
   }
 
   isHere(loc) {
@@ -702,6 +817,7 @@ class App {
     setTagOverride(type, { [dim]: value });
     this.pack.tagOverrides = getTagOverrides();
     savePack(this.pack);
+    this.renderPackManager();
     this.reanalyse();
   }
 
@@ -709,6 +825,7 @@ class App {
     clearTagOverride(type);
     this.pack.tagOverrides = getTagOverrides();
     savePack(this.pack);
+    this.renderPackManager();
     this.reanalyse();
   }
 
@@ -886,7 +1003,9 @@ class App {
     this.activeCues = evaluateCues(this.cues, this.scene, { snap: jumped });
     this.snapCues = false;
     this.ui.setCueStrengths(this.cues.map((c) => c.strength));
-    const pin = pinnedTheme(this.activeCues);
+    // A cue pinning a theme that is not installed (removed in the pack
+    // manager, or never shipped) holds nothing: the chosen theme plays on.
+    const pin = pinnedTheme(this.activeCues.filter((c) => !c.theme || this.hasTheme(c.theme)));
     const base = pin ? getTheme(pin.id) : this.theme;
     // Position (with speed and heading) lets `spatial` cues pan toward their place.
     const composed = withCues(base, this.activeCues, this.position);
@@ -1092,8 +1211,8 @@ class App {
 
   /**
    * Hand the Android wrapper the fences that may wake the app: every cue with
-   * a `near` circle AND a theme to pin (a loop on its own is not worth
-   * starting playback for), at most 100 — the Play Services per-app limit.
+   * a `near` circle AND an installed theme to pin (a loop on its own is not
+   * worth starting playback for, nor is a pin that would hold nothing), at most 100 — the Play Services per-app limit.
    * The host re-validates all of it; this is only the shortlist.
    */
   syncHostFences() {
@@ -1101,7 +1220,7 @@ class App {
     const fences = [];
     for (const cue of this.pack.cues || []) {
       const near = cue?.when?.near;
-      if (!near || !cue.theme) continue;
+      if (!near || !cue.theme || !this.hasTheme(cue.theme)) continue;
       const { lat, lng, radius } = near;
       if (![lat, lng, radius].every(Number.isFinite)) continue;
       fences.push({ name: String(cue.name || ''), lat, lng, radius });

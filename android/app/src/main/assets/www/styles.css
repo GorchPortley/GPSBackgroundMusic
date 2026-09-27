@@ -864,7 +864,7 @@ select.overridden {
   white-space: nowrap;
 }
 
-.cue-row .cue-actions { display: flex; gap: 5px; }
+.cue-row .cue-actions { display: flex; gap: 5px; align-items: center; }
 .cue-row .cue-actions .mini { padding: 4px 9px; }
 
 .cue-row .from-pack {
@@ -875,3 +875,45 @@ select.overridden {
 }
 
 .cue-list .empty { color: var(--text-faint); font-size: 13px; }
+
+/* ------------------------------------------------------------ pack manager */
+
+.pack-manager {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.pack-manager summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.pack-manager .pm-head {
+  margin: 12px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.saved-list li .pm-theme { cursor: default; min-width: 0; }
+.saved-list li .pm-theme:hover { border-color: var(--line-soft); background: #0d1520; }
+.pm-theme > span:first-child { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pm-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.pm-row .mini:disabled { opacity: 0.5; cursor: default; }
+.mini.danger { color: var(--danger); border-color: #4a2230; flex: 1; text-align: center; }
+.mini.danger:hover { color: #ffb0b0; border-color: #6a2a3a; }

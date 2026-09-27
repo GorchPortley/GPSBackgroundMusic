@@ -63,6 +63,11 @@ export class UI {
       pasteApply: $('pasteApply'),
       pasteCancel: $('pasteCancel'),
       packHint: $('packHint'),
+      pmSummary: $('pmSummary'),
+      pmThemes: $('pmThemes'),
+      pmTags: $('pmTags'),
+      pmTagReset: $('pmTagReset'),
+      pmResetAll: $('pmResetAll'),
       theme: $('theme'),
       themeNote: $('themeNote'),
       themeHeld: $('themeHeld'),
@@ -335,6 +340,15 @@ export class UI {
       this.el.pasteRow.hidden = showing;
       if (!showing) this.el.pasteArea.focus();
     });
+    this.el.pmTagReset.addEventListener('click', () => this.h.onTagResetAll?.());
+    this.el.pmResetAll.addEventListener('click', () => {
+      const ok = window.confirm(
+        'Reset everything?\n\nThis removes every imported theme, cue, saved place and ' +
+        'tag edit, and goes back to the default theme. Export a pack first if you ' +
+        'want to keep any of it.');
+      if (ok) this.h.onResetEverything?.();
+    });
+
     this.el.pasteCancel.addEventListener('click', () => this.hidePaste());
     this.el.pasteApply.addEventListener('click', () => {
       this.h.onPastePack?.(this.el.pasteArea.value);
@@ -456,6 +470,55 @@ export class UI {
     sel.selectedIndex = 0;
   }
 
+  /**
+   * The pack manager: imported themes (each removable), the tag-edit count
+   * with "Reset all", and a one-line summary. Names come from packs, so they
+   * only ever go in through textContent.
+   */
+  renderPackManager({ themes = [], tagEdits = 0, cues = 0, places = 0 } = {}) {
+    const plural = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
+    this.el.pmSummary.textContent =
+      `${plural(themes.length, 'imported theme')}, ${plural(cues, 'cue')}, ` +
+      `${plural(places, 'saved place')}, ${plural(tagEdits, 'tag edit')}.`;
+
+    const list = this.el.pmThemes;
+    list.replaceChildren();
+    if (!themes.length) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = 'No imported themes.';
+      list.append(li);
+    }
+    for (const t of themes) {
+      const li = document.createElement('li');
+      const info = document.createElement('span');
+      info.className = 'go pm-theme';
+      const title = document.createElement('span');
+      title.textContent = t.name;
+      const where = document.createElement('span');
+      where.className = 'where';
+      where.textContent = t.pinnedBy
+        ? `${t.id} · held by ${plural(t.pinnedBy, 'cue')}`
+        : t.id;
+      info.append(title, where);
+
+      const drop = document.createElement('button');
+      drop.type = 'button';
+      drop.className = 'drop';
+      drop.textContent = '×';
+      drop.title = `Remove theme ${t.name}`;
+      drop.setAttribute('aria-label', `Remove theme ${t.name}`);
+      drop.addEventListener('click', () => this.h.onThemeRemove?.(t.id));
+
+      li.append(info, drop);
+      list.append(li);
+    }
+
+    this.el.pmTags.textContent = tagEdits
+      ? `${plural(tagEdits, 'tag edit')}.` : 'No tag edits.';
+    this.el.pmTagReset.disabled = !tagEdits;
+  }
+
   /* ------------------------------------------------------------ cue editor */
 
   /**
@@ -536,18 +599,22 @@ export class UI {
         edit.className = 'mini';
         edit.textContent = 'Edit';
         edit.addEventListener('click', () => this.h.onEditCue?.(cue.name));
-        const del = document.createElement('button');
-        del.type = 'button';
-        del.className = 'mini';
-        del.textContent = 'Delete';
-        del.setAttribute('aria-label', `Delete cue ${cue.name}`);
-        del.addEventListener('click', () => this.h.onCueDelete?.(cue.name));
-        side.append(edit, del);
+        side.append(edit);
       } else {
+        // Hand-written cues cannot be edited here, but they can be removed.
         const tag = document.createElement('span');
         tag.className = 'from-pack';
         tag.textContent = 'from pack';
         side.append(tag);
+      }
+      if (Number.isInteger(cue.index) && cue.index >= 0) {
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'mini';
+        del.textContent = cue.editable ? 'Delete' : 'Remove';
+        del.setAttribute('aria-label', `${del.textContent} cue ${cue.name}`);
+        del.addEventListener('click', () => this.h.onCueRemove?.(cue.index));
+        side.append(del);
       }
 
       const where = document.createElement('span');

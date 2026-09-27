@@ -47,6 +47,26 @@ export function savePack(pack) {
 }
 
 /**
+ * Forget everything this app has stored in localStorage: the pack and any
+ * other key under the app's prefix (so a flag added later is covered too).
+ * Other sites' or other apps' keys on the same origin are left alone.
+ */
+export function clearStore() {
+  try {
+    const prefix = KEY.slice(0, KEY.indexOf('/') + 1);
+    const mine = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) mine.push(k);
+    }
+    for (const k of mine) localStorage.removeItem(k);
+    return mine.length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Validate anything that came from a file or from storage. Packs are shared,
  * so treat every field as untrusted: wrong types, out-of-range numbers and
  * unexpected keys are dropped rather than trusted.

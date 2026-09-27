@@ -187,6 +187,23 @@
       </div>
     </div>
     <p class="hint" id="packHint">Your tag edits, saved places and theme, as one file you can share.</p>
+
+    <details class="pack-manager" id="packManager">
+      <summary>Manage what is installed</summary>
+      <p class="hint" id="pmSummary"></p>
+      <h3 class="pm-head">Imported themes</h3>
+      <ul id="pmThemes" class="saved-list pm-list">
+        <li class="empty">No imported themes.</li>
+      </ul>
+      <div class="pm-row">
+        <span id="pmTags">No tag edits.</span>
+        <button type="button" id="pmTagReset" class="mini">Reset all tag edits</button>
+      </div>
+      <p class="hint">Saved places and cues are removed from their own lists above.</p>
+      <div class="pm-row">
+        <button type="button" id="pmResetAll" class="mini danger">Reset everything…</button>
+      </div>
+    </details>
   </section>
 
   <!-- ------------------------------------------------------------- mood -->
