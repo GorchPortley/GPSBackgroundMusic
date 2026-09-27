@@ -52,6 +52,7 @@ export const scifi = {
   name: 'Sci-Fi',
   available: true,
   description: 'Cold synthesis, wide drones, distant machinery.',
+  color: '#5cc8ff',
 
   /* ------------------------------------------------------------------ plan */
 

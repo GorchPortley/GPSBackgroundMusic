@@ -101,6 +101,7 @@ pad and a bass in a quiet lane to a full arrangement on a busy junction.
 |---|---|---|
 | `id`, `name` | — | Required. `id` must be unique. |
 | `description` | | One line, shown in the selector |
+| `color` | the app's teal | The page accent and radar tint while this theme is playing, so a handover is seen as well as heard. Exactly `#rrggbb` (e.g. `"#e39a6b"`); names, `#rgb` and anything else are rejected. It fades over 1.5 s when the new theme actually takes over, not when it is first asked for. The accent colours text, so pick a light colour that reads on the dark page |
 | `bpm` | 90 | Tempo |
 | `barsPerChord` | 1 | How long each chord lasts |
 | `trim` | 1 | Output level vs. other themes. Tune this last |
@@ -286,6 +287,7 @@ When a pattern is not enough, write the two functions directly. See
 ```js
 export const myTheme = {
   id: 'mine', name: 'Mine', available: true, description: '...',
+  color: '#a1b2c3',   // optional accent, same rule as a spec's `color`
 
   // Called every 1.5 s. Turn a mood into a concrete arrangement.
   plan(mood, seed) { return { /* ...plan shape... */ }; },

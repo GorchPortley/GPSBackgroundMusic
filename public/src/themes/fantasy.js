@@ -44,6 +44,7 @@ export const fantasy = {
   name: 'Fantasy',
   available: true,
   description: 'Strings, harp and modal folk lines. Taverns and forests.',
+  color: '#c3a6ff',
 
   /* ------------------------------------------------------------------ plan */
 

@@ -88,6 +88,7 @@
     {
       "id": "hyrule-field",
       "name": "Field",
+      "color": "#8fdc6a",
       "description": "Ocarina and harp over open strings. The road between places.",
       "bpm": [
         76,
@@ -440,6 +441,7 @@
     {
       "id": "market-town",
       "name": "Market",
+      "color": "#ffbf70",
       "description": "Bustling pizzicato and hand drums. Streets full of shops.",
       "bpm": [
         104,
@@ -606,6 +608,7 @@
     {
       "id": "temple",
       "name": "Temple",
+      "color": "#d6c4ff",
       "description": "Vast, slow and unresolved. Sacred ground.",
       "bpm": [
         54,

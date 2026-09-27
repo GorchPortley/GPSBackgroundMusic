@@ -44,6 +44,7 @@ export const noir = {
   name: 'Noir',
   available: true,
   description: 'Brushed drums, upright bass, rain on the window.',
+  color: '#d4b483',
 
   /* ------------------------------------------------------------------ plan */
 

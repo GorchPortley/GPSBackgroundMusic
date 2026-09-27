@@ -121,6 +121,9 @@ class App {
     this.autoplayPending = false;
 
     this.engine = new AudioEngine();
+    // The accent follows what is sounding (C4.3), so it turns at the seam
+    // where the engine takes the new theme — not when it is first asked for.
+    this.engine.onCommit = () => this.showPlayingTheme();
 
     // Weather (C3.10), off by default. The source never blocks anything: it
     // fetches in the background and replan reads `weather.current` each tick.
@@ -1033,7 +1036,9 @@ class App {
       plan.bpm = paceLockedBpm(plan.bpm, speed);
     }
 
-    this.ui.setActiveTheme(base, pin);
+    this.lastBase = base;
+    this.lastPin = pin;
+    this.showPlayingTheme();
     if (this.playing) this.setHostScene(name);
 
     this.ui.setScene({
@@ -1061,6 +1066,18 @@ class App {
     if (force || key !== this.lastPlanKey) {
       this.lastPlanKey = key;
     }
+  }
+
+  /**
+   * Tell the UI which theme is actually sounding: the one the engine last
+   * committed while playing, otherwise the one that would play. The "held by"
+   * line names the pin only once its theme is the one sounding.
+   */
+  showPlayingTheme() {
+    const id = this.playing ? this.engine.plan?.themeId : null;
+    const theme = id ? getTheme(id) : (this.lastBase || this.theme);
+    const pin = this.lastPin?.id === theme.id ? this.lastPin : null;
+    this.ui.setActiveTheme(theme, pin);
   }
 
   /**

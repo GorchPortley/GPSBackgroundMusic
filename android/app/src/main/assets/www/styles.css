@@ -14,6 +14,22 @@
   --radius: 14px;
 }
 
+/* Theme colour (C4.3): ui.js sets --accent on the root to the playing
+   theme's colour. Registering it as a <color> is what lets it transition —
+   an unregistered custom property would snap. Children inherit the value
+   mid-fade, so every accent on the page turns together with the radar. */
+@property --accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #6ee7d0;
+}
+
+:root { transition: --accent 1.5s ease-in-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root { transition: none; }
+}
+
 * { box-sizing: border-box; }
 
 html, body {

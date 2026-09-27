@@ -12,6 +12,7 @@ import {
 import { SIM_SPEEDS } from './geo.js';
 import { describeWeather } from './weather.js';
 import { THEMES } from './themes/index.js';
+import { isThemeColor } from './themes/spec.js';
 import { LOOP_PRESETS } from './themes/presets/loops.js';
 
 const $ = (id) => document.getElementById(id);
@@ -20,6 +21,14 @@ const $ = (id) => document.getElementById(id);
 const CUE_RADIUS_MIN = 50;
 const CUE_RADIUS_MAX = 3000;
 const CUE_SLIDER_MAX = 1000;
+
+/**
+ * Theme colour (C4.3). A theme without `color` gets this — the same value as
+ * `--accent` in styles.css. The fade matches the CSS transition on `--accent`
+ * so the radar (a canvas, which CSS cannot animate) turns with the page.
+ */
+const DEFAULT_ACCENT = '#6ee7d0';
+const ACCENT_FADE_MS = 1500;
 
 export class UI {
   constructor(handlers = {}) {
@@ -101,6 +110,9 @@ export class UI {
     this._tags = [];
     this._cueDraft = null;  // { lat, lng, radius } while the cue editor is open
     this._cueRows = [];     // per-cue strength elements in #cueList
+    // Radar tint: fades from `from` to `to` (rgb triples) starting at `t0`.
+    const rgb0 = hexToRgb(DEFAULT_ACCENT);
+    this._accent = { hex: DEFAULT_ACCENT, from: rgb0, to: rgb0, t0: 0 };
 
     this._buildMoodBars();
     this._buildSimSpeeds();
@@ -686,6 +698,8 @@ export class UI {
    * selector being ignored — or as nothing happening at all.
    */
   setActiveTheme(theme, pin) {
+    this._setAccent(theme?.color);
+
     const el = this.el.themeHeld;
     if (!el) return;
 
@@ -698,6 +712,29 @@ export class UI {
     el.hidden = false;
     el.textContent = `Now playing ${theme.name} \u2014 held by the "${pin.cue}" cue`;
     this.el.theme.classList.add('overridden');
+  }
+
+  /**
+   * The accent follows the playing theme's colour (C4.3). The value is
+   * re-checked here as `#rrggbb` — code themes never pass through
+   * validateSpec — and reaches CSS only as a custom property value.
+   * Anything else falls back to the default accent.
+   */
+  _setAccent(color) {
+    const hex = isThemeColor(color) ? color.toLowerCase() : DEFAULT_ACCENT;
+    if (hex === this._accent.hex) return;
+    const now = performance.now();
+    this._accent = { hex, from: this._accentRgb(now), to: hexToRgb(hex), t0: now };
+    document.documentElement.style.setProperty('--accent', hex);
+  }
+
+  /** The radar's accent right now, mid-fade included, as [r, g, b]. */
+  _accentRgb(now = performance.now()) {
+    const { from, to, t0 } = this._accent;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const t = reduce ? 1 : Math.min(1, Math.max(0, (now - t0) / ACCENT_FADE_MS));
+    const k = t * t * (3 - 2 * t);   // eased at both ends, like CSS ease-in-out
+    return from.map((v, i) => Math.round(v + (to[i] - v) * k));
   }
 
   setPosition(pos) {
@@ -948,10 +985,12 @@ export class UI {
     ctx.clearRect(0, 0, size, size);
 
     const level = this.engine?.level?.() ?? 0;
+    // The playing theme's colour, read once per frame so a handover fades.
+    const accent = this._accentRgb().join(', ');
 
     // Backdrop glow that breathes with the music.
     const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.9);
-    glow.addColorStop(0, `rgba(110, 231, 208, ${0.05 + level * 0.11})`);
+    glow.addColorStop(0, `rgba(${accent}, ${0.05 + level * 0.11})`);
     glow.addColorStop(0.55, 'rgba(138, 164, 255, 0.035)');
     glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = glow;
@@ -979,8 +1018,8 @@ export class UI {
     this._sweep = (this._sweep + 0.004) % (Math.PI * 2);
     const sweepGrad = ctx.createLinearGradient(
       cx, cy, cx + Math.cos(this._sweep) * R, cy + Math.sin(this._sweep) * R);
-    sweepGrad.addColorStop(0, 'rgba(110, 231, 208, 0.16)');
-    sweepGrad.addColorStop(1, 'rgba(110, 231, 208, 0)');
+    sweepGrad.addColorStop(0, `rgba(${accent}, 0.16)`);
+    sweepGrad.addColorStop(1, `rgba(${accent}, 0)`);
     ctx.strokeStyle = sweepGrad;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -990,7 +1029,7 @@ export class UI {
 
     this._drawPlaces(ctx, cx, cy, R);
     this._drawCueRadius(ctx, cx, cy, R);
-    this._drawSelf(ctx, cx, cy, level);
+    this._drawSelf(ctx, cx, cy, level, accent);
 
     // Range label.
     ctx.fillStyle = 'rgba(143, 161, 184, 0.55)';
@@ -1103,17 +1142,17 @@ export class UI {
     ctx.restore();
   }
 
-  _drawSelf(ctx, cx, cy, level) {
+  _drawSelf(ctx, cx, cy, level, accent) {
     const pulse = 7 + level * 9;
 
     ctx.beginPath();
     ctx.arc(cx, cy, pulse * 2.1, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(110, 231, 208, ${0.07 + level * 0.13})`;
+    ctx.fillStyle = `rgba(${accent}, ${0.07 + level * 0.13})`;
     ctx.fill();
 
     ctx.beginPath();
     ctx.arc(cx, cy, 5, 0, Math.PI * 2);
-    ctx.fillStyle = '#6ee7d0';
+    ctx.fillStyle = `rgb(${accent})`;
     ctx.fill();
 
     // Heading arrow, only meaningful when we actually have a bearing.
@@ -1127,7 +1166,7 @@ export class UI {
       ctx.lineTo(7, -5);
       ctx.lineTo(7, 5);
       ctx.closePath();
-      ctx.fillStyle = 'rgba(110, 231, 208, 0.85)';
+      ctx.fillStyle = `rgba(${accent}, 0.85)`;
       ctx.fill();
       ctx.restore();
     }
@@ -1135,6 +1174,11 @@ export class UI {
 }
 
 /* ------------------------------------------------------------------ utils */
+
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
 
 function hexToRgba(hex, alpha) {
   const h = hex.replace('#', '');

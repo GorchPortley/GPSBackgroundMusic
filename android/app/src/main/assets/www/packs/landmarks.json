@@ -57,6 +57,7 @@
     {
       "id": "paris",
       "name": "Paris",
+      "color": "#a4b4ff",
       "description": "Accordion and pizzicato with a triplet lilt.",
       "bpm": [92, 124, "e"],
       "barsPerChord": 2,
@@ -127,6 +128,7 @@
     {
       "id": "broadway",
       "name": "Broadway",
+      "color": "#ffd35c",
       "description": "Brass stabs and a backbeat. All lights on.",
       "bpm": [118, 152, "e"],
       "barsPerChord": 1,
@@ -211,6 +213,7 @@
     {
       "id": "neon",
       "name": "Neon",
+      "color": "#f57cff",
       "description": "Fast, tight and lit from below.",
       "bpm": [126, 156, "e"],
       "barsPerChord": 2,
@@ -295,6 +298,7 @@
     {
       "id": "ancient",
       "name": "Ancient",
+      "color": "#e39a6b",
       "description": "Stone, distance and a frame drum.",
       "bpm": [58, 82, "e"],
       "barsPerChord": 4,
@@ -369,6 +373,7 @@
     {
       "id": "vast",
       "name": "Vast",
+      "color": "#a8e3ff",
       "description": "Almost nothing, very slowly, in a very large room.",
       "bpm": [48, 66, "e"],
       "barsPerChord": 4,
@@ -441,6 +446,7 @@
     {
       "id": "stately",
       "name": "Stately",
+      "color": "#e6dcb8",
       "description": "Ceremonial brass and timpani. Somewhere official.",
       "bpm": [76, 100, "e"],
       "barsPerChord": 2,

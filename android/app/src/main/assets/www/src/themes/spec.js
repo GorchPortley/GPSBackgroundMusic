@@ -108,6 +108,14 @@ function level(spec, mood) {
 /* -------------------------------------------------------------- validation */
 
 /**
+ * A theme colour (C4.3): exactly `#rrggbb`. It ends up in a CSS custom
+ * property, so nothing looser — no names, no `#rgb`, no functions, no `url()`.
+ */
+export function isThemeColor(v) {
+  return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
+}
+
+/**
  * Check a spec before it is used. Returns `{ ok, errors, warnings }`.
  *
  * Themes get shared, so a broken one must produce a readable complaint rather
@@ -216,6 +224,10 @@ export function validateSpec(spec) {
   if (spec.ambience !== undefined &&
       (typeof spec.ambience !== 'number' || !(spec.ambience >= 0 && spec.ambience <= 1))) {
     errors.push('"ambience" must be a number from 0 to 1.');
+  }
+  // The UI accent while this theme is playing (C4.3). Optional.
+  if (spec.color !== undefined && !isThemeColor(spec.color)) {
+    errors.push('"color" must be a hex colour like "#a1b2c3".');
   }
 
   return { ok: errors.length === 0, errors, warnings };
@@ -440,6 +452,8 @@ export function themeFromSpec(spec) {
     name: spec.name,
     available: true,
     description: spec.description || 'A custom theme.',
+    // Validated above; absent means the app's default accent.
+    color: spec.color,
     source: 'spec',
     spec,
 

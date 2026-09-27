@@ -98,7 +98,7 @@ browser; Node built-ins on the server. ~9,600 lines total.
 | `public/src/scene.js` | Places → mood. Emphasis, peak-pull, contrast, motion | `analyzePlaces`, `contextualise`, `sceneKey`, `lerpMood`, `topContributors`, `whyLine` (C4.1) |
 | `public/src/scenecontext.js` | The `scene` object cues and code themes query | `buildScene` → `{tagWeight(), categoryWeight(), nearest(), named()}` |
 | `public/src/store.js` | Pack load/save/sanitise. **The security boundary** | `sanitise`, `loadPack`, `savePack`, `clearStore` (C4.2), `readPackFile` |
-| `public/src/audio/engine.js` | AudioContext, master chain, transport, plan commits | `AudioEngine`, `STEPS_PER_BAR`, `BARS_PER_PHRASE` |
+| `public/src/audio/engine.js` | AudioContext, master chain, transport, plan commits | `AudioEngine` (`onCommit` hook: the UI accent turns at the commit, C4.3), `STEPS_PER_BAR`, `BARS_PER_PHRASE` |
 | `public/src/audio/voices.js` | 18 synthesised instruments | `padVoice`, `bassVoice`, `pluckVoice`, `kick`, … |
 | `public/src/audio/ambience.js` | Ambience beds under the music (birds, water, traffic, murmur, rain), on `engine.ambienceGain` | `Ambience`, `AMBIENCE_KINDS` |
 | `public/src/audio/worklets/ks.js` | Karplus–Strong string processor (AudioWorklet, loaded in `engine.start()`) | registers `karplus-strong` |

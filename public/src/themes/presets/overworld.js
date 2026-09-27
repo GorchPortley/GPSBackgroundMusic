@@ -19,6 +19,7 @@ export const overworld = {
   id: 'overworld',
   name: 'Overworld',
   description: 'Bright looping melody over a walking bass. A worked spec example.',
+  color: '#8fdc6a',
 
   /* --------------------------------------------------------------- global */
 

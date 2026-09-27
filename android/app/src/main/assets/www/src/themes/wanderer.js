@@ -35,6 +35,7 @@ export const wanderer = {
   name: 'Wanderer',
   available: true,
   description: 'Warm cinematic ambient. Neutral enough for anywhere.',
+  color: '#6ee7d0',
 
   /* ------------------------------------------------------------------ plan */
 

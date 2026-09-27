@@ -79,6 +79,8 @@ export class AudioEngine {
     this.plan = null;
     this.stepFn = null;
     this._pending = null;
+    // Optional listener, called with the plan each time one commits.
+    this.onCommit = null;
 
     this._step = 0;
     this._nextStepTime = 0;
@@ -672,6 +674,9 @@ export class AudioEngine {
     this.plan = plan;
     this.stepFn = stepFn;
     this._swell = null;   // landed; the bloom runs out on its own
+    // Tell the UI what is sounding now (C4.3: the accent turns here). A
+    // listener throwing must not stop the commit.
+    try { this.onCommit?.(plan); } catch (err) { console.warn('onCommit:', err); }
     if (!this.ctx) return;
 
     const now = this.ctx.currentTime;
