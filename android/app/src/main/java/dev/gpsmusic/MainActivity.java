@@ -49,6 +49,9 @@ public class MainActivity extends Activity {
     private static final int REQ_NOTIFICATIONS = 102;
     private static final int REQ_FILE = 200;
 
+    /** Set by GeofenceReceiver (and its notification): press Play on first fix. */
+    public static final String EXTRA_AUTOPLAY = "autoplay";
+
     private WebView web;
 
     /** Held between opening the file picker and its result coming back. */
@@ -58,6 +61,9 @@ public class MainActivity extends Activity {
     private String pendingPackJson;
     private String pendingPackError;
     private boolean pageReady = false;
+
+    /** One-shot: taken by the page through AndroidHost.takeAutoplay(). */
+    private volatile boolean pendingAutoplay = false;
 
     private static final Map<String, String> MIME = new HashMap<>();
     static {
@@ -168,6 +174,8 @@ public class MainActivity extends Activity {
 
         requestPermissions();
         readPackFromIntent(getIntent());
+        // Not on a recreate: the original intent would start playback again.
+        if (savedInstanceState == null) readAutoplayFromIntent(getIntent());
         web.loadUrl(ORIGIN + "/index.html");
     }
 
@@ -177,6 +185,20 @@ public class MainActivity extends Activity {
         setIntent(intent);
         readPackFromIntent(intent);
         deliverPendingPack();
+        readAutoplayFromIntent(intent);
+        if (pendingAutoplay && pageReady && web != null) {
+            // The page is already up and will not ask again on its own.
+            web.evaluateJavascript(
+                    "window.gpsMusic && window.gpsMusic.checkHostAutoplay()", null);
+        }
+    }
+
+    /** A launch from a crossed fence, or from the "tap to play" notification. */
+    private void readAutoplayFromIntent(Intent intent) {
+        if (intent == null || !intent.getBooleanExtra(EXTRA_AUTOPLAY, false)) return;
+        if ((intent.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return;
+        intent.removeExtra(EXTRA_AUTOPLAY);
+        pendingAutoplay = true;
     }
 
     /**
@@ -362,6 +384,25 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void setScene(String scene) {
             PlaybackService.updateScene(MainActivity.this, scene);
+        }
+
+        /**
+         * The cues that may wake the app when it is closed, as a JSON array
+         * of {name, lat, lng, radius}. Validated and capped in
+         * GeofenceReceiver — the page is not trusted with the OS API.
+         */
+        @JavascriptInterface
+        public void setFences(String json) {
+            if (json == null || json.length() > 64 * 1024) return;
+            GeofenceReceiver.setFences(MainActivity.this, json);
+        }
+
+        /** True once after a fence launch; the page then presses Play on first fix. */
+        @JavascriptInterface
+        public boolean takeAutoplay() {
+            boolean autoplay = pendingAutoplay;
+            pendingAutoplay = false;
+            return autoplay;
         }
 
         /** Lets the page know it does not need a screen wake lock here. */

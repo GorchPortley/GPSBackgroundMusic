@@ -5,5 +5,8 @@
     <string name="channel_description">Keeps the score playing and location updating while the screen is off.</string>
     <string name="notification_idle">Listening to where you are</string>
     <string name="action_stop">Stop</string>
+    <string name="notification_wake">Near %1$s</string>
+    <string name="notification_wake_generic">At a place you bound</string>
+    <string name="notification_wake_tap">Tap to start the music</string>
     <string name="pick_pack">Choose a pack file</string>
 </resources>

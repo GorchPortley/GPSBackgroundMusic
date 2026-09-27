@@ -71,6 +71,8 @@ class App {
     this.cacheHits = 0;
     // The cue being edited. Its coordinates live only here until Save.
     this.cueDraft = null;
+    // Set when a fence crossing launched the app; Play is pressed on first fix.
+    this.autoplayPending = false;
 
     this.engine = new AudioEngine();
 
@@ -134,6 +136,11 @@ class App {
     this.loadConfig();
     this.loadExampleList();
 
+    // Android: re-register the wake-up fences from the stored pack (the OS
+    // drops them on reboot), and honour a launch that came from crossing one.
+    this.syncHostFences();
+    this.checkHostAutoplay();
+
     setInterval(() => this.replan(), REPLAN_MS);
     setInterval(() => {
       if (this.playing) this.ui.setBpm(this.engine.bpm);
@@ -174,6 +181,8 @@ class App {
   /* --------------------------------------------------------------- controls */
 
   async togglePower() {
+    // A press (or the autoplay itself) supersedes a waiting fence wake-up.
+    this.autoplayPending = false;
     if (this.playing) {
       this.playing = false;
       this.engine.stop();
@@ -409,6 +418,7 @@ class App {
         this.pack.cues = merged;
         this.cues = built.cues;
         this.reportCues(built.report);
+        this.syncHostFences();
       }
 
       // Themes: install, then keep only the ones that actually compiled.
@@ -562,6 +572,7 @@ class App {
     savePack(this.pack);
     this.rebuildCues(draft.editing && draft.editing !== name
       ? { from: draft.editing, to: name } : null);
+    this.syncHostFences();
     this.cueDraft = null;
     this.ui.closeCueEditor();
     this.ui.setStatus(`Saved cue \u201c${name}\u201d.`);
@@ -577,6 +588,7 @@ class App {
     this.pack.cues.splice(at, 1);
     savePack(this.pack);
     this.rebuildCues();
+    this.syncHostFences();
     if (this.cueDraft?.editing === name) {
       this.cueDraft = null;
       this.ui.closeCueEditor();
@@ -665,6 +677,10 @@ class App {
     this.scene.position = pos;   // `near` cues track you between lookups
     this.ui.setPosition(pos);
     this.maybeFetchPlaces(pos);
+    if (this.autoplayPending) {
+      this.autoplayPending = false;
+      if (!this.playing) this.togglePower();
+    }
   }
 
   /** Only spend a lookup when the surroundings could plausibly have changed. */
@@ -853,6 +869,56 @@ class App {
     } catch {
       /* not running in the wrapper */
     }
+  }
+
+  /**
+   * Hand the Android wrapper the fences that may wake the app: every cue with
+   * a `near` circle AND a theme to pin (a loop on its own is not worth
+   * starting playback for), at most 100 — the Play Services per-app limit.
+   * The host re-validates all of it; this is only the shortlist.
+   */
+  syncHostFences() {
+    if (typeof window.AndroidHost?.setFences !== 'function') return;
+    const fences = [];
+    for (const cue of this.pack.cues || []) {
+      const near = cue?.when?.near;
+      if (!near || !cue.theme) continue;
+      const { lat, lng, radius } = near;
+      if (![lat, lng, radius].every(Number.isFinite)) continue;
+      fences.push({ name: String(cue.name || ''), lat, lng, radius });
+      if (fences.length >= 100) break;
+    }
+    try {
+      window.AndroidHost.setFences(JSON.stringify(fences));
+    } catch {
+      /* not running in the wrapper, or the host refused — polling still works */
+    }
+  }
+
+  /**
+   * Launched by crossing a fence (GeofenceReceiver → MainActivity with
+   * autoplay=true). The flag is one-shot on the host side, so a reload does
+   * not start playback again. Switch to live GPS — the person is physically
+   * there — and press Play once the first position has arrived, so the first
+   * plan is built for where they are rather than for the default origin.
+   */
+  checkHostAutoplay() {
+    let autoplay = false;
+    try {
+      autoplay = window.AndroidHost?.takeAutoplay?.() === true;
+    } catch {
+      /* not running in the wrapper */
+    }
+    if (!autoplay || this.playing) return;
+    this.autoplayPending = true;
+    if (this.geo.mode !== 'live') {
+      this.geo.setMode('live');
+      this.ui.setModeUI('live');
+      document.querySelectorAll('.segmented [data-mode]').forEach((b) =>
+        b.classList.toggle('active', b.dataset.mode === 'live'));
+    }
+    this.geo.start();
+    this.ui.setStatus('Woken by a place you bound — waiting for a fix…', 'busy');
   }
 
   /* -------------------------------------------------------------- wake lock */

@@ -34,3 +34,9 @@ android {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
 }
+
+dependencies {
+    // The project's only dependency, and Android-side only (C1.3): geofences
+    // that wake the app when it is closed. The web app stays zero-dependency.
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+}

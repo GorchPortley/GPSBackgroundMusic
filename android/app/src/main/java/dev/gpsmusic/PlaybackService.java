@@ -35,6 +35,14 @@ public class PlaybackService extends Service {
 
     public static final String ACTION_START = "dev.gpsmusic.START";
     public static final String ACTION_STOP = "dev.gpsmusic.STOP";
+    /**
+     * Started by GeofenceReceiver when a bound place is entered with the app
+     * closed. Nothing is playing yet: the notification says where you are and
+     * opens the app with autoplay=true, because Android 10+ usually blocks the
+     * receiver from opening the activity itself.
+     */
+    public static final String ACTION_WAKE = "dev.gpsmusic.WAKE";
+    public static final String EXTRA_PLACE = "place";
 
     /** Set by the service so the activity can reflect real state after a restart. */
     public static volatile boolean running = false;
@@ -68,6 +76,18 @@ public class PlaybackService extends Service {
             running = false;
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        if (ACTION_WAKE.equals(action)) {
+            // mediaPlayback only: a location-type service started from the
+            // background needs background-location access on Android 14+,
+            // and this notification does not need location. Playback proper
+            // re-types the service with ACTION_START once the page is up.
+            startForeground(NOTIFICATION_ID,
+                    buildWakeNotification(intent.getStringExtra(EXTRA_PLACE)),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+            running = true;
             return START_NOT_STICKY;
         }
 
@@ -108,6 +128,31 @@ public class PlaybackService extends Service {
                         null, getString(R.string.action_stop), stopIntent).build())
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
+                .build();
+    }
+
+    private Notification buildWakeNotification(String place) {
+        Intent open = new Intent(this, MainActivity.class)
+                .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(MainActivity.EXTRA_AUTOPLAY, true);
+        PendingIntent content = PendingIntent.getActivity(
+                this, 2, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+
+        Intent stop = new Intent(this, PlaybackService.class).setAction(ACTION_STOP);
+        PendingIntent stopIntent = PendingIntent.getService(
+                this, 1, stop, PendingIntent.FLAG_IMMUTABLE);
+
+        return new Notification.Builder(this, CHANNEL_ID)
+                .setContentTitle(place == null || place.isEmpty()
+                        ? getString(R.string.notification_wake_generic)
+                        : getString(R.string.notification_wake, place))
+                .setContentText(getString(R.string.notification_wake_tap))
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentIntent(content)
+                .setAutoCancel(false)
+                .addAction(new Notification.Action.Builder(
+                        null, getString(R.string.action_stop), stopIntent).build())
+                .setOngoing(true)
                 .build();
     }
 
