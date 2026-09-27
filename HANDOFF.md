@@ -99,6 +99,7 @@ browser; Node built-ins on the server. ~9,600 lines total.
 | `public/src/store.js` | Pack load/save/sanitise. **The security boundary** | `sanitise`, `loadPack`, `savePack`, `readPackFile` |
 | `public/src/audio/engine.js` | AudioContext, master chain, transport, plan commits | `AudioEngine`, `STEPS_PER_BAR`, `BARS_PER_PHRASE` |
 | `public/src/audio/voices.js` | 18 synthesised instruments | `padVoice`, `bassVoice`, `pluckVoice`, `kick`, … |
+| `public/src/audio/ambience.js` | Ambience beds under the music (birds, water, traffic, murmur, rain), on `engine.ambienceGain` | `Ambience`, `AMBIENCE_KINDS` |
 | `public/src/audio/worklets/ks.js` | Karplus–Strong string processor (AudioWorklet, loaded in `engine.start()`) | registers `karplus-strong` |
 | `public/src/audio/theory.js` | Scales, modes, progressions, seeded RNG | `scaleNote`, `chordNotes`, `pickMode`, `mulberry32`, `hashString` |
 | `public/src/themes/index.js` | Theme registry, custom spec registration | `getTheme`, `allThemes`, `registerSpecs`, `customSpecs`, `removeCustom` |
@@ -157,7 +158,8 @@ in the console.
 
 ### 3.4 Continuous vs discrete plan fields
 Continuous fields (bpm, fx, timbre, trim, layer levels) take effect at once
-via `setTargetAtTime` in `_applyContinuous`. Discrete fields (`themeId`,
+via `setTargetAtTime` in `_applyContinuous`; `ambience` is continuous too,
+folded into the ambience levels by main.js (`updateAmbience` → `setAmbience`). Discrete fields (`themeId`,
 `root`, `scale`, `progression`, `barsPerChord`) wait for a phrase boundary —
 see `isDiscreteChange` at the bottom of engine.js. **If you add a plan field,
 decide which bucket it is in and wire it accordingly.** Cue membership is

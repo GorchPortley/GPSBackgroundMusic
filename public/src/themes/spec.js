@@ -182,6 +182,12 @@ export function validateSpec(spec) {
   for (const mode of spec.modes || []) {
     if (typeof mode !== 'string') errors.push(`Bad mode: ${JSON.stringify(mode)}.`);
   }
+  // How much of the place's own ambience (birds, water, traffic, murmur) this
+  // theme lets through: a plain number, 0 = none at all.
+  if (spec.ambience !== undefined &&
+      (typeof spec.ambience !== 'number' || !(spec.ambience >= 0 && spec.ambience <= 1))) {
+    errors.push('"ambience" must be a number from 0 to 1.');
+  }
 
   return { ok: errors.length === 0, errors, warnings };
 }
@@ -291,6 +297,8 @@ export function themeFromSpec(spec) {
         seed,
         mood,
         trim: num(spec.trim, mood, 1),
+        // Continuous: main.js folds it into the ambience levels every replan.
+        ambience: spec.ambience ?? 1,
         bpm: num(spec.bpm, mood, 90),
         root,
         scale,

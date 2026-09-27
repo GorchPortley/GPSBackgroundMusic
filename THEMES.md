@@ -104,6 +104,7 @@ pad and a bass in a quiet lane to a full arrangement on a busy junction.
 | `bpm` | 90 | Tempo |
 | `barsPerChord` | 1 | How long each chord lasts |
 | `trim` | 1 | Output level vs. other themes. Tune this last |
+| `ambience` | 1 | How much of the place's own sound this theme lets through, 0–1 (a plain number). `0` = none. See §9 |
 | `rootRange` | `[36, 47]` | MIDI range the tonic is picked from |
 | `modes` | all eight | Dark → bright ladder; brightness picks a position |
 | `progressions` | one minor loop | See below |
@@ -285,6 +286,9 @@ description; the engine handles getting there smoothly.
 Return `trim` to balance your theme's loudness against the others. Check it by
 rendering offline and comparing RMS, rather than by ear at one volume.
 
+Return `ambience` (0–1, default 1) to scale the place's ambience under your
+theme — §9. It glides like any other continuous field.
+
 ---
 
 ## 6. Binding loops to places
@@ -433,4 +437,30 @@ public/src/audio/
   voices.js             every synth voice, with its parameters
   theory.js             scales, chords, progressions, seeded RNG
   engine.js             transport and effects; you rarely need to read this
+  ambience.js           the place's own sound (§9)
 ```
+
+---
+
+## 9. Ambience
+
+Under the music sits a quiet synthesised soundscape that mirrors what is
+around you *literally*, where the music expresses its mood. Nothing is
+sampled.
+
+| Bed | Comes from | Sound |
+|---|---|---|
+| birds | category `nature` | short sine chirps, 2.8 ↔ 4.5 kHz, every 0.4–3 s; silent 22:00–05:00 |
+| water | category `water` | noise through a slowly wandering 500 Hz band |
+| traffic | `transit` + `service`, or a built-up scene (urbanness > 0.6) | low rumble, with a car passing every 6–20 s |
+| murmur | `food` + `nightlife` + `retail` | six drifting voice-band noises: a distant crowd |
+| rain | weather (not yet wired) | high hiss with sparse drips |
+
+Each bed's level is `category share × 1.6` (capped at 1) × the **Ambience**
+slider (next to volume, default 60 %) × the theme's `ambience`. Levels glide
+over about 2 s; the whole layer is held more than 18 dB under the music's
+peak, so it never changes a theme's balance.
+
+A theme sets how much of this it wants: `"ambience": 0.5` for half,
+`"ambience": 0` for none at all — a spec field, or a `plan()` field in a code
+theme.

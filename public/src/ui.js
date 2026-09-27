@@ -28,6 +28,7 @@ export class UI {
       power: $('power'),
       powerLabel: $('powerLabel'),
       volume: $('volume'),
+      ambience: $('ambience'),
       simRow: $('simRow'),
       simSpeed: $('simSpeed'),
       placeSearch: $('placeSearch'),
@@ -234,11 +235,20 @@ export class UI {
     sel.value = selected && THEMES.some((t) => t.id === selected) ? selected : '';
   }
 
+  /** The Ambience slider, 0..1 (default 60 %, like volume's 80 %, set in index.html). */
+  ambienceLevel() {
+    const v = Number(this.el.ambience?.value);
+    return Number.isFinite(v) ? Math.min(1, Math.max(0, v / 100)) : 0.6;
+  }
+
   _bind() {
     this.el.power.addEventListener('click', () => this.h.onPower?.());
 
     this.el.volume.addEventListener('input', () => {
       this.h.onVolume?.(Number(this.el.volume.value) / 100);
+    });
+    this.el.ambience.addEventListener('input', () => {
+      this.h.onAmbience?.(this.ambienceLevel());
     });
 
     for (const btn of document.querySelectorAll('.segmented [data-mode]')) {

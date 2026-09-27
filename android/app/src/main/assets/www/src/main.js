@@ -43,6 +43,15 @@ const FETCH_STATIONARY_INTERVAL_MS = 300000;
 const HERE_METRES = 10;
 /** Volume under another app's transient sound (Android LOSS_TRANSIENT_CAN_DUCK). */
 const HOST_DUCK = 0.25;
+/**
+ * Ambience (C3.4): a category's share of the scene times this is its bed's
+ * level, so a place that is ~60 % park gets full birds.
+ */
+const AMBIENCE_WEIGHT = 1.6;
+/** Above this urbanness a built-up scene hums with traffic whatever is tagged. */
+const AMBIENCE_URBAN = 0.6;
+
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
 class App {
   constructor() {
@@ -85,6 +94,7 @@ class App {
     this.ui = new UI({
       onPower: () => this.togglePower(),
       onVolume: () => this.applyVolume(),
+      onAmbience: () => this.applyAmbience(),
       onMode: (mode) => this.setMode(mode),
       onSimSpeed: (mps) => this.geo.setSimSpeed(mps),
       onTheme: (id) => this.setTheme(id),
@@ -853,10 +863,45 @@ class App {
     // Applied every tick on purpose: the engine takes continuous changes
     // immediately and defers anything that would break the current phrase.
     this.engine.applyPlan(plan, composed.step.bind(composed), { urgent: jumped });
+    this.updateAmbience(plan);
 
     if (force || key !== this.lastPlanKey) {
       this.lastPlanKey = key;
     }
+  }
+
+  /**
+   * The place, literally: one level per ambience bed from what is around you.
+   * `plan.ambience` (0..1, default 1) is the theme's say in it and is
+   * continuous — it only scales levels that glide anyway, so it never waits
+   * for a phrase. Rain is not set here: C3.10 (weather) will drive it.
+   */
+  updateAmbience(plan) {
+    const w = (...cats) => clamp01(
+      cats.reduce((sum, c) => sum + this.scene.categoryWeight(c), 0) * AMBIENCE_WEIGHT);
+    const urban = this.analysis?.urbanness ?? 0;
+    // Birds keep the hours birds keep: silent in the night band (22:00–05:00).
+    const night = this.band?.id === 'night';
+    this.ambienceBase = {
+      birds: night ? 0 : w('nature'),
+      water: w('water'),
+      traffic: Math.max(w('transit', 'service'),
+        clamp01((urban - AMBIENCE_URBAN) / (1 - AMBIENCE_URBAN))),
+      murmur: w('food', 'nightlife', 'retail'),
+    };
+    this.themeAmbience = typeof plan.ambience === 'number' && Number.isFinite(plan.ambience)
+      ? clamp01(plan.ambience) : 1;
+    this.applyAmbience();
+  }
+
+  /** Scene levels × the Ambience slider × the theme's `ambience`. */
+  applyAmbience() {
+    if (!this.playing || !this.ambienceBase) return;
+    const k = this.ui.ambienceLevel() * this.themeAmbience;
+    const levels = {};
+    for (const [name, v] of Object.entries(this.ambienceBase)) levels[name] = v * k;
+    this.ambienceLevels = levels;
+    this.engine.setAmbience(levels);
   }
 
   /* ------------------------------------------------------------------ host */

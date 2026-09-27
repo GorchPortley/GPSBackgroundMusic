@@ -13,6 +13,8 @@
  * sequence) waits for the next 4-bar phrase boundary.
  */
 
+import { Ambience } from './ambience.js';
+
 export const STEPS_PER_BAR = 16;   // 16th notes in 4/4
 export const BARS_PER_PHRASE = 4;
 const STEPS_PER_PHRASE = STEPS_PER_BAR * BARS_PER_PHRASE;
@@ -24,6 +26,14 @@ const START_DELAY_S = 0.12;
 /** How fast continuous parameters chase their target (seconds). */
 const MORPH_TC = 2.5;
 const REVERB_CROSSFADE_S = 3.0;
+
+/**
+ * Fixed gain of the ambience bus. With the per-generator maxima in
+ * ambience.js this keeps every bed at level 1 at once more than 18 dB under
+ * the music's peak (measured through the whole chain at the loudest trim).
+ * Ambience is quiet by design — the music must not move when it arrives.
+ */
+const AMBIENCE_BUS = 0.033;
 
 export class AudioEngine {
   constructor() {
@@ -81,6 +91,7 @@ export class AudioEngine {
 
     this._step = 0;
     this._nextStepTime = now + START_DELAY_S;
+    this.ambience.start();
     this._timer = setInterval(() => this._tick(), LOOKAHEAD_MS);
   }
 
@@ -122,6 +133,8 @@ export class AudioEngine {
     this.master.gain.cancelScheduledValues(now);
     this.master.gain.setValueAtTime(this.master.gain.value, now);
     this.master.gain.linearRampToValueAtTime(0.0001, now + 1.0);
+    // Sources stop once the master has faded, and then disconnect.
+    this.ambience.stop(now + 1.02);
 
     clearInterval(this._timer);
     this._timer = null;
@@ -135,6 +148,22 @@ export class AudioEngine {
     if (this.ctx && this.running) {
       this.master.gain.setTargetAtTime(this._volume, this.ctx.currentTime, 0.1);
     }
+  }
+
+  /**
+   * Ambience levels, 0..1 by generator (birds, water, traffic, murmur, rain):
+   * main.js has already folded in the scene, the slider and the theme's
+   * `ambience`. Each glides (ambience.js AMBIENCE_TC), so this is safe to
+   * call every replan.
+   */
+  setAmbience(levels) {
+    if (!this.ambience) return;
+    this.ambience.setLevels(levels);
+  }
+
+  /** Debug: live node / grain / noise-source counts on the ambience bus. */
+  ambienceStats() {
+    return this.ambience ? { ...this.ambience.stats } : null;
   }
 
   /* ---------------------------------------------------------------- graph */
@@ -247,6 +276,7 @@ export class AudioEngine {
 
     this._buildDrone();
     this._buildAir();
+    this._buildAmbience();
 
     /** Bundle handed to every voice. */
     this.io = {
@@ -326,6 +356,21 @@ export class AudioEngine {
     lfo.connect(depth).connect(this.airFilter.frequency);
     lfo.start();
     this.airLfoDepth = depth;
+  }
+
+  /**
+   * The place, literally (ambience.js): its own bus into the dry path, with a
+   * half-strength send into the room so it sits in the same space.
+   */
+  _buildAmbience() {
+    const ctx = this.ctx;
+    this.ambienceGain = ctx.createGain();
+    this.ambienceGain.gain.value = AMBIENCE_BUS;
+    this.ambienceGain.connect(this.dry);
+    const send = ctx.createGain();
+    send.gain.value = 0.5;
+    this.ambienceGain.connect(send).connect(this.reverbBus);
+    this.ambience = new Ambience(ctx, this.ambienceGain);
   }
 
   /* --------------------------------------------------------------- buffers */
@@ -473,6 +518,7 @@ export class AudioEngine {
 
   _tick() {
     const ctx = this.ctx;
+    this.ambience.schedule(ctx.currentTime + SCHEDULE_AHEAD_S);
     while (this._nextStepTime < ctx.currentTime + SCHEDULE_AHEAD_S) {
       const step = this._step;
 

@@ -261,7 +261,10 @@ main {
   border-radius: 2px;
 }
 
-.volume { display: flex; align-items: center; gap: 8px; flex: 1; color: var(--text-faint); }
+.volume { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; color: var(--text-faint); }
+/* Two sliders share the row (volume, ambience): let them shrink below a
+   range input's intrinsic width so a phone never scrolls sideways. */
+.volume input[type="range"] { width: 0; min-width: 44px; }
 .vol-icon { width: 18px; height: 18px; flex: none; }
 
 input[type="range"] {
