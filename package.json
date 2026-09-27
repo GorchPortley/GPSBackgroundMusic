@@ -1,0 +1,17 @@
+{
+  "name": "gps-background-music",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Generative background music driven by your GPS position and nearby Google Maps place tags.",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "dev": "node --env-file-if-exists=.env --watch server/index.js",
+    "stop": "node scripts/stop.mjs",
+    "restart": "node scripts/stop.mjs && node --env-file-if-exists=.env server/index.js",
+    "cert": "node scripts/make-cert.mjs"
+  },
+  "engines": {
+    "node": ">=20.12.0"
+  }
+}

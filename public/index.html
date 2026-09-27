@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>GPS Background Music</title>
+<link rel="stylesheet" href="/styles.css">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GPS Music">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>&#127925;</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div>
+      <h1>GPS Background Music</h1>
+      <p class="tagline">A score generated from where you are</p>
+    </div>
+  </div>
+  <div class="badges">
+    <span class="badge" id="providerBadge" title="Where place tags come from">…</span>
+    <span class="badge" id="bandBadge" title="Time of day shading">…</span>
+  </div>
+</header>
+
+<p class="notice" id="warning" hidden></p>
+
+<main>
+  <!-- ------------------------------------------------------------ stage -->
+  <section class="panel stage">
+    <canvas id="radar" width="640" height="640" aria-label="Nearby tagged places"></canvas>
+    <div class="stage-overlay">
+      <p class="scene-name" id="sceneName">Silent</p>
+      <p class="scene-meta" id="sceneMeta">Press play to begin</p>
+      <div class="cue-strip" id="cueStrip" hidden aria-label="Active place cues"></div>
+    </div>
+    <p class="stage-foot" id="statusLine">Ready.</p>
+  </section>
+
+  <!-- --------------------------------------------------------- controls -->
+  <section class="panel controls">
+    <div class="row primary-row">
+      <button id="power" class="power" type="button" aria-pressed="false">
+        <span class="power-icon" aria-hidden="true"></span>
+        <span id="powerLabel">Play</span>
+      </button>
+      <label class="volume">
+        <span class="sr-only">Volume</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="vol-icon">
+          <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/>
+          <path d="M16.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <input type="range" id="volume" min="0" max="100" value="80">
+      </label>
+    </div>
+
+    <div class="row">
+      <span class="label">Position</span>
+      <div class="segmented" role="group" aria-label="Position source">
+        <button type="button" data-mode="explore" class="active">Explore</button>
+        <button type="button" data-mode="sim">Simulate</button>
+        <button type="button" data-mode="live">Live GPS</button>
+      </div>
+    </div>
+
+    <div class="row" id="simRow">
+      <span class="label">Pace</span>
+      <div class="segmented small" id="simSpeed" role="group" aria-label="Simulated pace"></div>
+    </div>
+
+    <div class="row">
+      <span class="label">Theme</span>
+      <select id="theme" aria-label="Music theme"></select>
+    </div>
+    <p class="theme-note" id="themeNote"></p>
+    <p class="theme-held" id="themeHeld" hidden></p>
+  </section>
+
+  <!-- ----------------------------------------------------------- explore -->
+  <section class="panel explore" id="explorePanel">
+    <h2>Anywhere</h2>
+    <p class="hint">Stand somewhere without going there. Search a place, or paste coordinates.</p>
+    <div class="search">
+      <input type="search" id="placeSearch" autocomplete="off"
+             placeholder="Omega Music, Dayton — or 39.75, -84.19"
+             aria-label="Search for a place">
+      <button type="button" id="searchGo">Go</button>
+    </div>
+    <ul id="searchResults" class="result-list" hidden></ul>
+
+    <div class="saved-head">
+      <h3>Saved</h3>
+      <button type="button" id="saveHere" class="mini">+ Save this spot</button>
+    </div>
+    <ul id="savedList" class="saved-list">
+      <li class="empty">Nothing saved yet.</li>
+    </ul>
+
+    <div class="pack-row">
+      <button type="button" id="exportPack" class="mini">Export pack</button>
+      <button type="button" id="importPack" class="mini">Import pack</button>
+      <button type="button" id="pasteToggle" class="mini">Paste</button>
+      <input type="file" id="importFile" accept="application/json,.json,text/plain" hidden>
+    </div>
+    <div class="paste-row" id="pasteRow" hidden>
+      <label class="sr-only" for="pasteArea">Paste pack JSON</label>
+      <textarea id="pasteArea" rows="4" spellcheck="false"
+                placeholder="Paste the contents of a pack .json file here"></textarea>
+      <div class="paste-actions">
+        <button type="button" id="pasteApply" class="mini">Import pasted</button>
+        <button type="button" id="pasteCancel" class="mini">Cancel</button>
+      </div>
+    </div>
+    <p class="hint" id="packHint">Your tag edits, saved places and theme, as one file you can share.</p>
+  </section>
+
+  <!-- ------------------------------------------------------------- mood -->
+  <section class="panel mood">
+    <h2>Mood</h2>
+    <div id="moodBars" class="mood-bars"></div>
+    <dl class="readout">
+      <div><dt>Coordinates</dt><dd id="coords">—</dd></div>
+      <div><dt>Speed</dt><dd id="speedOut">—</dd></div>
+      <div><dt>Accuracy</dt><dd id="accuracyOut">—</dd></div>
+      <div><dt>Tempo</dt><dd id="bpmOut">—</dd></div>
+    </dl>
+  </section>
+
+  <!-- ------------------------------------------------------------- tags -->
+  <section class="panel tags">
+    <h2>What is around you <span class="count" id="placeCount"></span></h2>
+    <p class="hint">Tap a tag to change how it sounds. Edits apply everywhere that tag appears.</p>
+    <ul id="tagList" class="tag-list">
+      <li class="empty">Nothing sampled yet.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <p>
+    Place data from OpenStreetMap contributors, or the Google Places API if you
+    configured a key. Every sound is synthesised in the browser from oscillators
+    and noise — there are no audio files. Nothing is recorded, and no position
+    leaves this machine except the lookup itself.
+  </p>
+</footer>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

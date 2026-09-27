@@ -1,0 +1,631 @@
+{
+  "version": 1,
+  "_about": [
+    "LANDMARKS — ten famous places, six themes, deliberately unsubtle.",
+    "",
+    "Built for hearing the engine work rather than for listening to. Every",
+    "landmark below hands over to a whole different theme, so jumping between",
+    "the saved places in Explore should be immediately obvious: Paris is an",
+    "accordion waltz, Broadway is brass stabs, Shibuya is fast neon, the Grand",
+    "Canyon is almost nothing at all.",
+    "",
+    "HOW TO USE IT",
+    "  Import, then Anywhere -> tap a saved place. Give it two or three seconds",
+    "  to take hold. The line under the theme selector tells you which theme is",
+    "  playing and which cue is holding it.",
+    "",
+    "  The selector still shows YOUR choice and goes dim while a cue overrides",
+    "  it. That is expected — the cue wins while you are standing there, and",
+    "  your choice comes back when you leave.",
+    "",
+    "WHAT PLAYS WHERE",
+    "  Eiffel Tower           Paris     accordion, triplet lilt, warm",
+    "  Broadway / Times Sq    Broadway  brass stabs, showy, fast",
+    "  Shibuya Crossing       Neon      fast blips, tight, pentatonic",
+    "  Colosseum              Ancient   vast, phrygian, frame drum",
+    "  Machu Picchu           Ancient   same, but thinner air",
+    "  Grand Canyon           Vast      drone and swells, almost still",
+    "  Golden Gate Bridge     Vast      same, with fog horns",
+    "  White House            Stately   ceremonial brass and timpani",
+    "  Sydney Opera House     Stately   brighter, orchestral",
+    "  Abbey Road             (layers)  a backbeat over whatever is playing",
+    "",
+    "All music here is original. These are impressions of places, not",
+    "arrangements of anything associated with them.",
+    "",
+    "The radii are generous — 400 m at most landmarks, 3 km at the Grand",
+    "Canyon, because the place is the size of the place."
+  ],
+
+  "tagOverrides": {},
+  "theme": "wanderer",
+
+  "locations": [
+    { "name": "Eiffel Tower — Paris", "lat": 48.8584, "lng": 2.2945 },
+    { "name": "Broadway / Times Sq — Broadway", "lat": 40.759, "lng": -73.9845 },
+    { "name": "Shibuya Crossing — Neon", "lat": 35.6595, "lng": 139.7005 },
+    { "name": "Colosseum — Ancient", "lat": 41.8902, "lng": 12.4922 },
+    { "name": "Machu Picchu — Ancient", "lat": -13.1631, "lng": -72.545 },
+    { "name": "Grand Canyon — Vast", "lat": 36.0544, "lng": -112.1401 },
+    { "name": "Golden Gate Bridge — Vast", "lat": 37.8199, "lng": -122.4783 },
+    { "name": "White House — Stately", "lat": 38.8977, "lng": -77.0365 },
+    { "name": "Sydney Opera House — Stately", "lat": -33.8568, "lng": 151.2153 },
+    { "name": "Abbey Road — layers only", "lat": 51.532, "lng": -0.1777 }
+  ],
+
+  "themes": [
+    {
+      "id": "paris",
+      "name": "Paris",
+      "description": "Accordion and pizzicato with a triplet lilt.",
+      "bpm": [92, 124, "e"],
+      "barsPerChord": 2,
+      "trim": 1.76,
+      "rootRange": [40, 49],
+      "modes": ["aeolian", "harmonicMinor", "dorian", "ionian", "lydian"],
+      "progressions": [
+        { "name": "i — iv — V — i", "degrees": [0, 3, 4, 0], "brightness": 0.28 },
+        { "name": "i — VI — ii — V", "degrees": [0, 5, 1, 4], "brightness": 0.5 },
+        { "name": "I — vi — ii — V", "degrees": [0, 5, 1, 4], "brightness": 0.78 }
+      ],
+      "drone": 0.03,
+      "air": 0.008,
+      "fx": {
+        "reverbMix": [0.16, 0.34, "s"],
+        "reverbSeconds": [1.2, 2.4, "s"],
+        "delayMix": 0.08,
+        "delayFeedback": 0.16,
+        "delayTone": 3000
+      },
+      "layers": [
+        {
+          "_note": "Twelve slots across the bar gives a 3-feel inside 4/4 — the lilt.",
+          "name": "accordion",
+          "voice": "pulse",
+          "pattern": "0 ~ ~ 2 ~ ~ 4 ~ ~ <2 5> ~ ~",
+          "octave": 3,
+          "gain": 0.075,
+          "dur": 2.2,
+          "params": { "duty": 0.35, "cutoff": [1600, 3400, "b"], "vibrato": 22, "resonance": 1.6 }
+        },
+        {
+          "name": "bellows",
+          "voice": "strings",
+          "pattern": "0@3 4",
+          "octave": 2,
+          "gain": 0.045,
+          "chordSize": 3,
+          "params": { "cutoff": [900, 2000, "b"], "detune": 11, "vibrato": 14 }
+        },
+        {
+          "name": "oom",
+          "voice": "pizz",
+          "pattern": "0 ~ ~ ~ ~ ~ 4 ~ ~ ~ ~ ~",
+          "octave": 1,
+          "gain": 0.2,
+          "params": { "decay": 0.4, "cutoff": 800 }
+        },
+        {
+          "name": "pah",
+          "voice": "pluck",
+          "pattern": "~ ~ ~ [2 4] ~ ~ ~ ~ ~ [2 4] ~ ~",
+          "octave": 3,
+          "gain": 0.05,
+          "params": { "decay": 0.35, "bright": 0.6, "pan": 0.25 }
+        },
+        {
+          "name": "brush",
+          "voice": "brush",
+          "pattern": "x ~ ~ x ~ ~ x ~ ~ x ~ ~",
+          "gain": 0.03,
+          "level": ["e", 0.3, 0.4],
+          "params": { "decay": 0.14, "swirl": true }
+        }
+      ]
+    },
+
+    {
+      "id": "broadway",
+      "name": "Broadway",
+      "description": "Brass stabs and a backbeat. All lights on.",
+      "bpm": [118, 152, "e"],
+      "barsPerChord": 1,
+      "trim": 0.9,
+      "rootRange": [42, 51],
+      "modes": ["dorian", "mixolydian", "ionian", "majorPentatonic", "lydian"],
+      "progressions": [
+        { "name": "I — vi — ii — V", "degrees": [0, 5, 1, 4], "brightness": 0.5 },
+        { "name": "I — IV — V — I", "degrees": [0, 3, 4, 0], "brightness": 0.75 },
+        { "name": "I — II — IV — V", "degrees": [0, 1, 3, 4], "brightness": 0.92 }
+      ],
+      "drone": 0.015,
+      "air": 0.006,
+      "fx": {
+        "reverbMix": [0.12, 0.3, "s"],
+        "reverbSeconds": [0.9, 1.8, "s"],
+        "delayMix": 0.09,
+        "delayFeedback": 0.15,
+        "delayTone": 4200
+      },
+      "layers": [
+        {
+          "_note": "Stabs, not lines. Short and loud on the off-beats.",
+          "name": "brass",
+          "voice": "pulse",
+          "pattern": "~ ~ [0 2] ~ ~ ~ [4 2] ~ ~ ~ [0 4] ~ ~ [7 4] ~ ~",
+          "octave": 3,
+          "gain": 0.08,
+          "dur": 0.7,
+          "params": { "duty": 0.5, "cutoff": [3000, 6500, "b"], "attack": 0.004, "release": 0.03 }
+        },
+        {
+          "name": "lead",
+          "voice": "pulse",
+          "pattern": "<7 9> ~ <5 7> ~ 4 ~ ~ ~",
+          "octave": 4,
+          "gain": 0.055,
+          "dur": 1.4,
+          "level": ["b", 0.5, 0.3],
+          "params": { "duty": 0.25, "cutoff": 6000, "vibrato": 8 }
+        },
+        {
+          "name": "walk",
+          "voice": "pizz",
+          "pattern": "0 ~ 2 ~ 4 ~ 5 ~",
+          "octave": 1,
+          "gain": 0.21,
+          "params": { "decay": 0.36, "cutoff": 950 }
+        },
+        {
+          "name": "kick",
+          "voice": "kick",
+          "pattern": "x ~ ~ ~ ~ ~ x ~",
+          "gain": 0.3,
+          "params": { "tone": 125 }
+        },
+        {
+          "name": "snare",
+          "voice": "rim",
+          "pattern": "~ ~ ~ ~ x ~ ~ ~ ~ ~ ~ ~ x ~ ~ ~",
+          "gain": 0.09
+        },
+        {
+          "name": "sizzle",
+          "voice": "hat",
+          "pattern": "x*8",
+          "gain": 0.03,
+          "params": { "decay": 0.04 }
+        },
+        {
+          "name": "glitz",
+          "voice": "bell",
+          "pattern": "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ 9 ~ ~ ~",
+          "octave": 5,
+          "gain": 0.035,
+          "level": ["d", 0.4, 0.35],
+          "params": { "decay": 2, "ratio": 2.01, "index": 3, "reverb": 0.6 }
+        }
+      ]
+    },
+
+    {
+      "id": "neon",
+      "name": "Neon",
+      "description": "Fast, tight and lit from below.",
+      "bpm": [126, 156, "e"],
+      "barsPerChord": 2,
+      "trim": 1.05,
+      "rootRange": [38, 47],
+      "modes": ["hirajoshi", "insen", "minorPentatonic", "dorian", "majorPentatonic"],
+      "progressions": [
+        { "name": "drone", "degrees": [0], "brightness": 0.4 },
+        { "name": "i — VII", "degrees": [0, 6], "brightness": 0.55 },
+        { "name": "I — V", "degrees": [0, 4], "brightness": 0.8 }
+      ],
+      "drone": [0.03, 0.08, "s"],
+      "air": [0.008, 0.02, "s"],
+      "fx": {
+        "reverbMix": [0.14, 0.34, "s"],
+        "reverbSeconds": [0.8, 2.0, "s"],
+        "delayMix": [0.16, 0.32, "d"],
+        "delayFeedback": 0.34,
+        "delayTone": [3000, 6000, "b"]
+      },
+      "layers": [
+        {
+          "name": "arp",
+          "voice": "blip",
+          "pattern": "[0 2 4 7]*4",
+          "octave": 4,
+          "gain": 0.03,
+          "params": { "duty": 0.125, "decay": 0.045, "reverb": 0.2, "delay": 0.35 }
+        },
+        {
+          "name": "lead",
+          "voice": "pulse",
+          "pattern": "0 ~ ~ 4 ~ 2 ~ ~ <7 4> ~ ~ 2 ~ ~ ~ ~",
+          "octave": 4,
+          "gain": 0.06,
+          "dur": 1.2,
+          "params": { "duty": 0.25, "cutoff": [4000, 8000, "b"], "resonance": 2 }
+        },
+        {
+          "name": "sub",
+          "voice": "bass",
+          "pattern": "0 ~ 0 ~ 0 ~ 0 ~",
+          "octave": 0,
+          "gain": 0.24,
+          "dur": 1.4,
+          "params": { "cutoff": [300, 600, "b"] }
+        },
+        {
+          "name": "pad",
+          "voice": "pad",
+          "pattern": "0",
+          "octave": 3,
+          "gain": 0.03,
+          "chordSize": 4,
+          "params": { "wave": "sawtooth", "detune": 16, "cutoff": [1200, 3000, "b"], "reverb": 0.5 }
+        },
+        {
+          "name": "kick",
+          "voice": "kick",
+          "pattern": "x ~ ~ ~ x ~ ~ ~",
+          "gain": 0.32,
+          "params": { "tone": 110 }
+        },
+        {
+          "name": "hat",
+          "voice": "hat",
+          "pattern": "~ x ~ x ~ x ~ x ~ x ~ x ~ x ~ x",
+          "gain": 0.026,
+          "params": { "decay": 0.028 }
+        },
+        {
+          "name": "clank",
+          "voice": "clank",
+          "pattern": "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ x ~ ~ ~",
+          "gain": 0.05,
+          "level": ["d", 0.45, 0.3],
+          "params": { "tone": 2200, "decay": 0.25 }
+        }
+      ]
+    },
+
+    {
+      "id": "ancient",
+      "name": "Ancient",
+      "description": "Stone, distance and a frame drum.",
+      "bpm": [58, 82, "e"],
+      "barsPerChord": 4,
+      "trim": 0.88,
+      "rootRange": [33, 42],
+      "modes": ["phrygian", "aeolian", "harmonicMinor", "hirajoshi", "dorian"],
+      "progressions": [
+        { "name": "drone", "degrees": [0], "brightness": 0.3 },
+        { "name": "i — ♭II", "degrees": [0, 1], "brightness": 0.16 },
+        { "name": "i — VII", "degrees": [0, 6], "brightness": 0.55 }
+      ],
+      "drone": [0.08, 0.15, "s"],
+      "air": [0.014, 0.032, "s"],
+      "droneCutoff": [130, 320, "b"],
+      "airCutoff": [400, 1600, "b"],
+      "fx": {
+        "reverbMix": [0.38, 0.62, "s"],
+        "reverbSeconds": [3.5, 7.5, "s"],
+        "delayMix": 0.14,
+        "delayFeedback": [0.28, 0.44, "s"],
+        "delayTone": [900, 2400, "b"]
+      },
+      "layers": [
+        {
+          "name": "stone",
+          "voice": "pad",
+          "pattern": "0",
+          "octave": 2,
+          "gain": 0.06,
+          "chordSize": 3,
+          "params": { "wave": "sawtooth", "detune": 14, "cutoff": [400, 1200, "b"], "reverb": 0.9 }
+        },
+        {
+          "name": "reed",
+          "voice": "flute",
+          "pattern": "0 ~ ~ 1 ~ ~ 0@2 ~ ~ ~ <4 3> ~ ~",
+          "octave": 4,
+          "gain": 0.07,
+          "dur": 3,
+          "level": ["b", 0.4, 0.35],
+          "humanise": 0.016,
+          "params": { "breath": 0.3, "vibrato": 16, "reverb": 0.8, "delay": 0.3 }
+        },
+        {
+          "name": "sub",
+          "voice": "bass",
+          "pattern": "0@7 6",
+          "octave": 0,
+          "gain": 0.2,
+          "dur": 9,
+          "params": { "cutoff": [150, 320, "b"] }
+        },
+        {
+          "name": "frame",
+          "voice": "kick",
+          "pattern": "x ~ ~ x ~ ~ x ~",
+          "gain": 0.22,
+          "level": ["e", 0.2, 0.35],
+          "params": { "tone": 150 }
+        },
+        {
+          "name": "bell",
+          "voice": "bell",
+          "pattern": "0 ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~",
+          "octave": 4,
+          "gain": 0.05,
+          "params": { "decay": 7, "ratio": 1.414, "index": 4, "reverb": 0.95 }
+        }
+      ]
+    },
+
+    {
+      "id": "vast",
+      "name": "Vast",
+      "description": "Almost nothing, very slowly, in a very large room.",
+      "bpm": [48, 66, "e"],
+      "barsPerChord": 4,
+      "trim": 0.96,
+      "rootRange": [31, 40],
+      "modes": ["aeolian", "dorian", "mixolydian", "ionian", "lydian"],
+      "progressions": [
+        { "name": "drone", "degrees": [0], "brightness": 0.4 },
+        { "name": "I — V", "degrees": [0, 4], "brightness": 0.75 }
+      ],
+      "drone": [0.10, 0.18, "s"],
+      "air": [0.02, 0.045, "s"],
+      "droneCutoff": [110, 300, "b"],
+      "airCutoff": [300, 1400, "b"],
+      "airQ": 1.6,
+      "fx": {
+        "reverbMix": [0.5, 0.72, "s"],
+        "reverbSeconds": [6, 9, "s"],
+        "delayMix": 0.1,
+        "delayFeedback": 0.42,
+        "delayTone": [600, 1800, "b"]
+      },
+      "layers": [
+        {
+          "name": "sky",
+          "voice": "pad",
+          "pattern": "0",
+          "octave": 3,
+          "gain": 0.06,
+          "chordSize": 4,
+          "params": { "wave": "triangle", "detune": 7, "cutoff": [500, 1600, "b"], "reverb": 0.95 }
+        },
+        {
+          "name": "floor",
+          "voice": "bass",
+          "pattern": "0@7 4",
+          "octave": 0,
+          "gain": 0.22,
+          "dur": 12,
+          "params": { "cutoff": [130, 260, "b"] }
+        },
+        {
+          "name": "horn",
+          "voice": "pulse",
+          "pattern": "~ ~ ~ ~ ~ ~ ~ ~ 0@4 ~ ~ ~ ~",
+          "octave": 1,
+          "gain": 0.05,
+          "dur": 7,
+          "level": ["s", 0.5, 0.4],
+          "params": { "duty": 0.4, "cutoff": 600, "attack": 0.5, "release": 1.2, "vibrato": 5 }
+        },
+        {
+          "name": "far-bell",
+          "voice": "bell",
+          "pattern": "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ <7 4> ~ ~ ~",
+          "octave": 5,
+          "gain": 0.03,
+          "params": { "decay": 8, "ratio": 3.7, "index": 2, "reverb": 0.95, "delay": 0.5 }
+        },
+        {
+          "name": "wind",
+          "voice": "sweep",
+          "pattern": "x ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~",
+          "gain": 0.03,
+          "params": { "dur": 6, "from": 200, "to": 1800, "q": 1.2, "reverb": 0.9 }
+        }
+      ]
+    },
+
+    {
+      "id": "stately",
+      "name": "Stately",
+      "description": "Ceremonial brass and timpani. Somewhere official.",
+      "bpm": [76, 100, "e"],
+      "barsPerChord": 2,
+      "trim": 1.06,
+      "rootRange": [38, 47],
+      "modes": ["aeolian", "dorian", "mixolydian", "ionian", "lydian"],
+      "progressions": [
+        { "name": "I — IV — I — V", "degrees": [0, 3, 0, 4], "brightness": 0.6 },
+        { "name": "I — V — IV — I", "degrees": [0, 4, 3, 0], "brightness": 0.8 },
+        { "name": "i — iv — V", "degrees": [0, 3, 4], "brightness": 0.3 }
+      ],
+      "drone": [0.04, 0.09, "s"],
+      "air": 0.01,
+      "fx": {
+        "reverbMix": [0.3, 0.55, "s"],
+        "reverbSeconds": [2.5, 5, "s"],
+        "delayMix": 0.06,
+        "delayFeedback": 0.2,
+        "delayTone": 2400
+      },
+      "layers": [
+        {
+          "name": "brass",
+          "voice": "pulse",
+          "pattern": "0@2 ~ 2 ~ 4@3 ~ ~ ~ <4 7>@2 ~ ~",
+          "octave": 2,
+          "gain": 0.07,
+          "dur": 3,
+          "params": { "duty": 0.42, "cutoff": [1400, 3200, "b"], "attack": 0.05, "release": 0.25, "vibrato": 6 }
+        },
+        {
+          "name": "strings",
+          "voice": "strings",
+          "pattern": "0@3 4",
+          "octave": 3,
+          "gain": 0.055,
+          "chordSize": 4,
+          "params": { "cutoff": [900, 2600, "b"], "detune": 6, "vibrato": 7 }
+        },
+        {
+          "name": "low",
+          "voice": "bass",
+          "pattern": "0 ~ ~ ~ 4 ~ ~ ~",
+          "octave": 0,
+          "gain": 0.23,
+          "dur": 3,
+          "params": { "cutoff": [260, 480, "b"] }
+        },
+        {
+          "name": "timpani",
+          "voice": "kick",
+          "pattern": "x ~ ~ ~ ~ ~ ~ ~ x ~ x ~ ~ ~ ~ ~",
+          "gain": 0.3,
+          "params": { "tone": 145 }
+        },
+        {
+          "name": "cymbal",
+          "voice": "hat",
+          "pattern": "x ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~",
+          "gain": 0.03,
+          "level": ["e", 0.35, 0.35],
+          "params": { "decay": 0.4, "reverb": 0.6 }
+        },
+        {
+          "name": "chime",
+          "voice": "bell",
+          "pattern": "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ 7 ~ ~ ~",
+          "octave": 5,
+          "gain": 0.035,
+          "level": ["b", 0.55, 0.3],
+          "params": { "decay": 4, "ratio": 2.01, "index": 2.5, "reverb": 0.85 }
+        }
+      ]
+    }
+  ],
+
+  "cues": [
+    {
+      "name": "Eiffel Tower",
+      "when": { "near": { "lat": 48.8584, "lng": 2.2945, "radius": 500 } },
+      "theme": "paris"
+    },
+    {
+      "name": "Broadway",
+      "when": { "near": { "lat": 40.759, "lng": -73.9845, "radius": 450 } },
+      "theme": "broadway"
+    },
+    {
+      "name": "Shibuya",
+      "when": { "near": { "lat": 35.6595, "lng": 139.7005, "radius": 350 } },
+      "theme": "neon"
+    },
+    {
+      "name": "Colosseum",
+      "when": { "near": { "lat": 41.8902, "lng": 12.4922, "radius": 400 } },
+      "theme": "ancient",
+      "layers": [
+        {
+          "name": "crowd-ghost",
+          "voice": "sweep",
+          "pattern": "~ ~ ~ ~ ~ ~ ~ ~ x ~ ~ ~ ~ ~ ~ ~",
+          "gain": 0.025,
+          "params": { "dur": 4, "from": 300, "to": 1400, "q": 1.5, "reverb": 0.9 }
+        }
+      ]
+    },
+    {
+      "name": "Machu Picchu",
+      "when": { "near": { "lat": -13.1631, "lng": -72.545, "radius": 1000 } },
+      "theme": "ancient",
+      "layers": [
+        {
+          "_note": "Thinner air: a high whistle over the same theme.",
+          "name": "high-flute",
+          "voice": "flute",
+          "pattern": "7 ~ ~ ~ 9 ~ ~ ~ ~ ~ 7 ~ ~ ~ ~ ~",
+          "octave": 5,
+          "gain": 0.045,
+          "dur": 3,
+          "params": { "breath": 0.34, "vibrato": 10, "reverb": 0.9 }
+        }
+      ]
+    },
+    {
+      "name": "Grand Canyon",
+      "when": { "near": { "lat": 36.0544, "lng": -112.1401, "radius": 3000 } },
+      "theme": "vast"
+    },
+    {
+      "name": "Golden Gate",
+      "when": { "near": { "lat": 37.8199, "lng": -122.4783, "radius": 900 } },
+      "theme": "vast",
+      "layers": [
+        {
+          "_note": "Fog horn. Deliberately a fixed pitch, ignoring the harmony.",
+          "name": "foghorn",
+          "voice": "pulse",
+          "pattern": "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ f1@3 ~ ~",
+          "octave": 0,
+          "gain": 0.05,
+          "dur": 5,
+          "params": { "duty": 0.45, "cutoff": 420, "attack": 0.4, "release": 1 }
+        }
+      ]
+    },
+    {
+      "name": "White House",
+      "when": { "near": { "lat": 38.8977, "lng": -77.0365, "radius": 500 } },
+      "theme": "stately"
+    },
+    {
+      "name": "Sydney Opera House",
+      "when": { "near": { "lat": -33.8568, "lng": 151.2153, "radius": 450 } },
+      "theme": "stately",
+      "layers": [
+        {
+          "name": "harbour-bells",
+          "voice": "bell",
+          "pattern": "<9 11> ~ ~ ~ <7 9> ~ ~ ~",
+          "octave": 5,
+          "gain": 0.035,
+          "params": { "decay": 3, "ratio": 2.01, "index": 3, "reverb": 0.85, "delay": 0.35 }
+        }
+      ]
+    },
+    {
+      "_note": "LAYERS ONLY — no theme pin. Whatever is playing gains a backbeat.",
+      "name": "Abbey Road",
+      "when": { "near": { "lat": 51.532, "lng": -0.1777, "radius": 250 } },
+      "layers": [
+        {
+          "name": "backbeat",
+          "voice": "rim",
+          "pattern": "~ ~ ~ ~ x ~ ~ ~ ~ ~ ~ ~ x ~ ~ ~",
+          "gain": 0.09
+        },
+        {
+          "name": "jangle",
+          "voice": "pluck",
+          "pattern": "[0 2 4] ~ ~ ~ [4 2 0] ~ ~ ~",
+          "octave": 3,
+          "gain": 0.06,
+          "params": { "decay": 0.7, "bright": 0.85, "pan": -0.2, "delay": 0.3 }
+        }
+      ]
+    }
+  ]
+}
