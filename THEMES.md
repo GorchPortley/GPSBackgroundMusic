@@ -289,6 +289,14 @@ Cues live in a pack, alongside your tag edits and saved places, so they are
 shared the same way. `examples/cues-example.json` is a working one — import it
 from the Anywhere panel.
 
+You do not have to write cues by hand for the common case. In the Anywhere
+panel, **Bind…** on a saved place opens an editor for a `near` cue — name,
+radius, a theme to hold while you are there, and any of the loop presets in
+`public/src/themes/presets/loops.js` (ordinary spec layers, copied into the
+cue). What it saves is exactly the format below plus `"_ui": true`, which only
+tells the editor it may offer Edit and Delete; cues without it are shown as
+*from pack* and left alone.
+
 ### Four ways to say where
 
 | Condition | Matches | Use for |

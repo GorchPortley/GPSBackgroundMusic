@@ -108,10 +108,18 @@ export function sanitise(input) {
 
   // Cues get the same treatment as themes: structural limits here, real
   // validation in compileCues() which knows what a condition and a loop are.
+  //
+  // `_ui: true` marks a cue made in the in-app editor, which is what lets the
+  // editor offer to change it. Allowed only as exactly `true`; anything else
+  // under that key is dropped.
   if (Array.isArray(input.cues)) {
-    for (const cue of input.cues.slice(0, MAX_CUES)) {
+    for (let cue of input.cues.slice(0, MAX_CUES)) {
       if (!cue || typeof cue !== 'object' || Array.isArray(cue)) continue;
       if (typeof cue.name !== 'string' || !cue.name || cue.name.length > 80) continue;
+      if ('_ui' in cue && cue._ui !== true) {
+        const { _ui, ...rest } = cue;
+        cue = rest;
+      }
       let size = 0;
       try { size = JSON.stringify(cue).length; } catch { continue; }
       if (size > MAX_THEME_BYTES) continue;

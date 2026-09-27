@@ -11,8 +11,14 @@ import {
 } from './tags.js';
 import { SIM_SPEEDS } from './geo.js';
 import { THEMES } from './themes/index.js';
+import { LOOP_PRESETS } from './themes/presets/loops.js';
 
 const $ = (id) => document.getElementById(id);
+
+/** Cue radius slider: log scale, so 50 m and 3 km are both easy to hit. */
+const CUE_RADIUS_MIN = 50;
+const CUE_RADIUS_MAX = 3000;
+const CUE_SLIDER_MAX = 1000;
 
 export class UI {
   constructor(handlers = {}) {
@@ -28,6 +34,20 @@ export class UI {
       searchGo: $('searchGo'),
       searchResults: $('searchResults'),
       saveHere: $('saveHere'),
+      bindHere: $('bindHere'),
+      cueEditor: $('cueEditor'),
+      cueEditorTitle: $('cueEditorTitle'),
+      cueEditorWhere: $('cueEditorWhere'),
+      cueName: $('cueName'),
+      cueRadius: $('cueRadius'),
+      cueRadiusOut: $('cueRadiusOut'),
+      cueTheme: $('cueTheme'),
+      cuePresets: $('cuePresets'),
+      cueEditorHint: $('cueEditorHint'),
+      cueSave: $('cueSave'),
+      cueDelete: $('cueDelete'),
+      cueCancel: $('cueCancel'),
+      cueList: $('cueList'),
       savedList: $('savedList'),
       exportPack: $('exportPack'),
       importPack: $('importPack'),
@@ -69,10 +89,13 @@ export class UI {
     this._raf = null;
     this._editing = null;   // canonical tag type currently open in the editor
     this._tags = [];
+    this._cueDraft = null;  // { lat, lng, radius } while the cue editor is open
+    this._cueRows = [];     // per-cue strength elements in #cueList
 
     this._buildMoodBars();
     this._buildSimSpeeds();
     this._buildThemes();
+    this._buildCueEditor();
     this._bind();
     this._resize();
 
@@ -157,6 +180,60 @@ export class UI {
     this.el.themeNote.textContent = THEMES.find((t) => t.id === id)?.description || '';
   }
 
+  /** One checkbox per loop preset; the fields themselves are in index.html. */
+  _buildCueEditor() {
+    for (const preset of LOOP_PRESETS) {
+      const label = document.createElement('label');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.value = preset.id;
+      const text = document.createElement('span');
+      text.textContent = preset.name;
+      label.append(box, text);
+      this.el.cuePresets.append(label);
+    }
+
+    this.el.cueRadius.addEventListener('input', () => {
+      const r = sliderToRadius(Number(this.el.cueRadius.value));
+      this.el.cueRadiusOut.textContent = formatMetres(r);
+      if (this._cueDraft) this._cueDraft.radius = r;
+    });
+
+    this.el.cueSave.addEventListener('click', () => {
+      const presets = [...this.el.cuePresets.querySelectorAll('input:checked')]
+        .map((b) => b.value);
+      this.h.onCueSave?.({
+        name: this.el.cueName.value.trim(),
+        radius: this._cueDraft?.radius ?? sliderToRadius(Number(this.el.cueRadius.value)),
+        theme: this.el.cueTheme.value || null,
+        presets,
+      });
+    });
+    this.el.cueDelete.addEventListener('click', () => this.h.onCueDelete?.(null));
+    this.el.cueCancel.addEventListener('click', () => {
+      this.closeCueEditor();
+      this.h.onCueCancel?.();
+    });
+  }
+
+  /** "— none —" plus every playable theme, rebuilt on open so pack themes show. */
+  _fillCueThemes(selected) {
+    const sel = this.el.cueTheme;
+    sel.replaceChildren();
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = '\u2014 none \u2014';
+    sel.append(none);
+    for (const theme of THEMES) {
+      if (!theme.available) continue;
+      const opt = document.createElement('option');
+      opt.value = theme.id;
+      opt.textContent = theme.name;
+      sel.append(opt);
+    }
+    sel.value = selected && THEMES.some((t) => t.id === selected) ? selected : '';
+  }
+
   _bind() {
     this.el.power.addEventListener('click', () => this.h.onPower?.());
 
@@ -181,6 +258,7 @@ export class UI {
     });
 
     this.el.saveHere.addEventListener('click', () => this.h.onSaveHere?.());
+    this.el.bindHere.addEventListener('click', () => this.h.onBindHere?.());
     this.el.exportPack.addEventListener('click', () => this.h.onExportPack?.());
     this.el.importPack.addEventListener('click', () => this.el.importFile.click());
     this.el.importFile.addEventListener('change', () => {
@@ -291,7 +369,14 @@ export class UI {
       drop.setAttribute('aria-label', `Remove ${loc.name}`);
       drop.addEventListener('click', () => this.h.onRemoveSaved?.(i));
 
-      li.append(go, drop);
+      const bind = document.createElement('button');
+      bind.type = 'button';
+      bind.className = 'mini bind';
+      bind.textContent = 'Bind\u2026';
+      bind.title = `Bind a theme or loops to ${loc.name}`;
+      bind.addEventListener('click', () => this.h.onBindSaved?.(i));
+
+      li.append(go, bind, drop);
       list.append(li);
     });
   }
@@ -313,6 +398,124 @@ export class UI {
       sel.append(opt);
     }
     sel.selectedIndex = 0;
+  }
+
+  /* ------------------------------------------------------------ cue editor */
+
+  /**
+   * Show the editor for one place. `draft` is { name, lat, lng, radius,
+   * theme, presets, editing, where }. The coordinates stay here, for the radar
+   * circle, until main.js is told to save.
+   */
+  openCueEditor(draft) {
+    const el = this.el;
+    el.cueEditorTitle.textContent = draft.editing
+      ? `Edit \u201c${draft.editing}\u201d`
+      : 'Bind something to this place';
+    el.cueEditorWhere.textContent = draft.where || '';
+    el.cueName.value = draft.name || '';
+
+    const radius = Math.min(CUE_RADIUS_MAX, Math.max(CUE_RADIUS_MIN, draft.radius || 150));
+    el.cueRadius.value = String(radiusToSlider(radius));
+    el.cueRadiusOut.textContent = formatMetres(radius);
+
+    this._fillCueThemes(draft.theme);
+    const on = new Set(draft.presets || []);
+    for (const box of el.cuePresets.querySelectorAll('input')) box.checked = on.has(box.value);
+
+    el.cueDelete.hidden = !draft.editing;
+    this.setCueEditorHint('');
+    this._cueDraft = { lat: draft.lat, lng: draft.lng, radius };
+    el.cueEditor.hidden = false;
+    el.cueEditor.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    el.cueName.focus({ preventScroll: true });
+  }
+
+  closeCueEditor() {
+    this.el.cueEditor.hidden = true;
+    this._cueDraft = null;
+    this.setCueEditorHint('');
+  }
+
+  setCueEditorHint(text) {
+    this.el.cueEditorHint.textContent = text || '';
+  }
+
+  /**
+   * Every cue in the pack: name, strength, its condition in words, and
+   * Edit/Delete for the ones made here. Cues from a pack are read-only.
+   * Rebuilt only when the list changes; strengths go through setCueStrengths.
+   */
+  renderCueList(cues) {
+    const list = this.el.cueList;
+    list.replaceChildren();
+    this._cueRows = [];
+
+    if (!cues.length) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = 'No cues yet. Bind something to a saved place.';
+      list.append(li);
+      return;
+    }
+
+    for (const cue of cues) {
+      const li = document.createElement('li');
+      li.className = 'cue-row';
+
+      const head = document.createElement('span');
+      head.className = 'cue-head';
+      const chip = document.createElement('span');
+      chip.className = 'cue-chip';
+      chip.textContent = cue.name;
+      const pct = document.createElement('span');
+      pct.className = 'cue-pct';
+      head.append(chip, pct);
+
+      const side = document.createElement('span');
+      side.className = 'cue-actions';
+      if (cue.editable) {
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'mini';
+        edit.textContent = 'Edit';
+        edit.addEventListener('click', () => this.h.onEditCue?.(cue.name));
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'mini';
+        del.textContent = 'Delete';
+        del.setAttribute('aria-label', `Delete cue ${cue.name}`);
+        del.addEventListener('click', () => this.h.onCueDelete?.(cue.name));
+        side.append(edit, del);
+      } else {
+        const tag = document.createElement('span');
+        tag.className = 'from-pack';
+        tag.textContent = 'from pack';
+        side.append(tag);
+      }
+
+      const where = document.createElement('span');
+      where.className = 'where';
+      where.textContent = [cue.description, cue.does].filter(Boolean).join(' \u00b7 ');
+
+      li.append(head, side, where);
+      list.append(li);
+      this._cueRows.push({ chip, pct });
+      this._setCueStrength(this._cueRows.length - 1, cue.strength ?? 0);
+    }
+  }
+
+  /** Strengths in the same order as the last renderCueList call. */
+  setCueStrengths(strengths) {
+    strengths.forEach((s, i) => this._setCueStrength(i, s));
+  }
+
+  _setCueStrength(i, strength) {
+    const row = this._cueRows[i];
+    if (!row) return;
+    const s = Math.min(1, Math.max(0, strength || 0));
+    row.chip.style.setProperty('--strength', s.toFixed(2));
+    row.pct.textContent = `${Math.round(s * 100)}%`;
   }
 
   /* -------------------------------------------------------------- setters */
@@ -650,6 +853,7 @@ export class UI {
     ctx.stroke();
 
     this._drawPlaces(ctx, cx, cy, R);
+    this._drawCueRadius(ctx, cx, cy, R);
     this._drawSelf(ctx, cx, cy, level);
 
     // Range label.
@@ -719,6 +923,50 @@ export class UI {
     }
   }
 
+  /**
+   * While the cue editor is open, the cue's radius on the same scale as the
+   * places: solid where it plays in full, dashed where it has faded out.
+   */
+  _drawCueRadius(ctx, cx, cy, R) {
+    const draft = this._cueDraft;
+    if (!draft || !this.center) return;
+
+    const mPerDegLat = 111320;
+    const mPerDegLng = Math.max(1, 111320 * Math.cos((this.center.lat * Math.PI) / 180));
+    const scale = R / this.radius;
+    const x = cx + (draft.lng - this.center.lng) * mPerDegLng * scale;
+    const y = cy - (draft.lat - this.center.lat) * mPerDegLat * scale;
+    const r = draft.radius * scale;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 178, 107, 0.07)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 178, 107, 0.75)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.setLineDash([4, 5]);
+    ctx.beginPath();
+    ctx.arc(x, y, r * 2, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 178, 107, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 178, 107, 0.9)';
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255, 178, 107, 0.85)';
+    ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(formatMetres(draft.radius), x, y - Math.min(r, R) - 6);
+    ctx.restore();
+  }
+
   _drawSelf(ctx, cx, cy, level) {
     const pulse = 7 + level * 9;
 
@@ -756,6 +1004,22 @@ function hexToRgba(hex, alpha) {
   const h = hex.replace('#', '');
   const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+function sliderToRadius(v) {
+  const t = Math.min(1, Math.max(0, v / CUE_SLIDER_MAX));
+  const r = CUE_RADIUS_MIN * (CUE_RADIUS_MAX / CUE_RADIUS_MIN) ** t;
+  const step = r < 200 ? 5 : r < 1000 ? 10 : 50;
+  return Math.min(CUE_RADIUS_MAX, Math.max(CUE_RADIUS_MIN, Math.round(r / step) * step));
+}
+
+function radiusToSlider(r) {
+  const t = Math.log(r / CUE_RADIUS_MIN) / Math.log(CUE_RADIUS_MAX / CUE_RADIUS_MIN);
+  return Math.round(Math.min(1, Math.max(0, t)) * CUE_SLIDER_MAX);
+}
+
+function formatMetres(m) {
+  return m >= 1000 ? `${(m / 1000).toFixed(m >= 2000 ? 1 : 2)} km` : `${Math.round(m)} m`;
 }
 
 function formatSpeed(mps) {

@@ -96,10 +96,49 @@
 
     <div class="saved-head">
       <h3>Saved</h3>
-      <button type="button" id="saveHere" class="mini">+ Save this spot</button>
+      <span class="saved-actions">
+        <button type="button" id="saveHere" class="mini">+ Save this spot</button>
+        <button type="button" id="bindHere" class="mini">Bind here…</button>
+      </span>
     </div>
     <ul id="savedList" class="saved-list">
       <li class="empty">Nothing saved yet.</li>
+    </ul>
+
+    <div class="cue-editor" id="cueEditor" hidden>
+      <div class="tag-editor-head">
+        <strong id="cueEditorTitle">Bind something to this place</strong>
+        <span class="scope" id="cueEditorWhere"></span>
+      </div>
+      <label class="cue-field">
+        <span>Name</span>
+        <input type="text" id="cueName" maxlength="80" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="cue-field">
+        <span>Radius</span>
+        <input type="range" id="cueRadius" min="0" max="1000" step="1" value="268">
+        <output id="cueRadiusOut">150 m</output>
+      </label>
+      <label class="cue-field">
+        <span>Theme while here</span>
+        <select id="cueTheme"></select>
+      </label>
+      <fieldset class="cue-presets" id="cuePresets">
+        <legend>Loops on top</legend>
+      </fieldset>
+      <p class="hint cue-editor-hint" id="cueEditorHint"></p>
+      <div class="editor-actions">
+        <button type="button" id="cueSave" class="mini">Save</button>
+        <button type="button" id="cueDelete" class="mini">Delete</button>
+        <button type="button" id="cueCancel" class="mini">Cancel</button>
+      </div>
+    </div>
+
+    <div class="saved-head">
+      <h3>Place cues</h3>
+    </div>
+    <ul id="cueList" class="cue-list">
+      <li class="empty">No cues yet. Bind something to a saved place.</li>
     </ul>
 
     <div class="pack-row">

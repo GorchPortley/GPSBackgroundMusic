@@ -158,7 +158,20 @@ of restaurant at once. **Reset to default** restores the shipped value.
 
 A theme decides how everywhere sounds. A **cue** decides how *somewhere*
 sounds — extra loops that appear when you are near a kind of place, or a
-specific one:
+specific one.
+
+**In the app.** Press **Bind…** on any saved place (or **Bind here…**, which
+saves where you are standing first). Give it a name, drag the radius
+(50 m – 3 km; the circle is drawn on the radar while the editor is open),
+pick a **Theme while here**, tick any loops to lay on top — backbeat, jangle,
+chime, pulse, foghorn, heartbeat — and press **Save**. Nothing is written
+until you do. If you are standing on the place, you hear it at once.
+**Place cues** lists every cue with its live strength and what it does; the
+ones you made have Edit and Delete, the ones that came in a pack are marked
+*from pack* and are read-only here. A cue made this way is an ordinary pack
+cue with `"_ui": true`, so it exports and imports like any other.
+
+**By hand.** A cue is a few lines of JSON in a pack:
 
 ```json
 { "name": "Gym",     "when": { "tag": "gym" },                      "layers": [ ... ] }
@@ -395,6 +408,7 @@ public/
       fantasy.js  strings, rolled harp, flute
       noir.js     swing, walking bass
       presets/overworld.js  loop-driven spec example
+      presets/loops.js      loop presets for the in-app cue editor
 tools/
   render-check.js  offline level/NaN check of every theme
   jump-test.js     end-to-end cue/pin timing check

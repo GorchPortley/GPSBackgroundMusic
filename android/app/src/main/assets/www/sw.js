@@ -12,7 +12,7 @@
  *      rather than going silent.
  */
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL = `shell-${VERSION}`;
 const PLACES = `places-${VERSION}`;
 
@@ -48,6 +48,7 @@ const SHELL_FILES = [
   '/src/themes/fantasy.js',
   '/src/themes/noir.js',
   '/src/themes/presets/overworld.js',
+  '/src/themes/presets/loops.js',
   '/packs/index.json',
   '/packs/landmarks.json',
   '/packs/ocarina.json',

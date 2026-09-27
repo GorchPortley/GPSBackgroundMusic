@@ -22,8 +22,10 @@ import { downloadPack, loadPack, readPackFile, sanitise, savePack } from './stor
 import * as provider from './provider.js';
 import { buildScene, emptyScene } from './scenecontext.js';
 import {
-  compileCues, evaluateCues, pinnedTheme, withCues,
+  compileCues, evaluateCues, pinnedTheme, validateCue, withCues,
 } from './themes/cues.js';
+import { describeCondition } from './themes/match.js';
+import { LOOP_PRESETS } from './themes/presets/loops.js';
 import { hashString } from './audio/theory.js';
 import {
   customSpecs, DEFAULT_THEME_ID, getTheme, registerSpecs,
@@ -35,6 +37,8 @@ const REPLAN_MS = 1500;
 const MOOD_ALPHA = 0.16;
 const FETCH_MIN_INTERVAL_MS = 8000;
 const FETCH_MAX_INTERVAL_MS = 75000;
+/** Opening the cue editor on a spot this close counts as "from here". */
+const HERE_METRES = 10;
 
 class App {
   constructor() {
@@ -65,6 +69,8 @@ class App {
     this.activeCues = [];
     this.lookups = 0;      // upstream lookups this session
     this.cacheHits = 0;
+    // The cue being edited. Its coordinates live only here until Save.
+    this.cueDraft = null;
 
     this.engine = new AudioEngine();
 
@@ -78,6 +84,12 @@ class App {
       onGoTo: (loc) => this.goTo(loc),
       onSaveHere: () => this.saveHere(),
       onRemoveSaved: (i) => this.removeSaved(i),
+      onBindSaved: (i) => this.openBind(this.pack.locations[i]),
+      onBindHere: () => this.bindHere(),
+      onEditCue: (name) => this.editCue(name),
+      onCueSave: (values) => this.saveCue(values),
+      onCueDelete: (name) => this.deleteCue(name ?? this.cueDraft?.editing),
+      onCueCancel: () => { this.cueDraft = null; },
       onExportPack: () => this.exportPack(),
       onImportPack: (file) => this.importPack(file),
       onPastePack: (text) => this.importPackText(text),
@@ -115,6 +127,7 @@ class App {
     this.ui.setPlaying(false);
     this.ui.startRadar();
     this.ui.renderSaved(this.pack.locations);
+    this.renderCueList();
     this.ui.refreshThemes(this.theme.id);
     this.engine.setVolume(Number(this.ui.el.volume.value) / 100);
 
@@ -430,7 +443,184 @@ class App {
         `Imported ${Object.keys(incoming.tagOverrides).length} tag edits, ` +
         `${incoming.locations.length} places${this.themeNote || ''}.`);
       this.ui.renderSaved(this.pack.locations);
+      // After the themes are installed, so a pinned pack theme shows its name.
+      this.renderCueList();
     }
+  }
+
+  /* ------------------------------------------------------------ cue editor */
+
+  /**
+   * Open the cue editor on a saved place — or on the cue already bound there.
+   * Nothing is written to the pack until Save: the coordinates wait in
+   * `cueDraft`, so the device position never lands in a cue by accident.
+   */
+  openBind(loc, fromHere = this.isHere(loc)) {
+    if (!loc) return;
+    const existing = this.pack.cues.find((c) => isEditableCue(c) &&
+      Math.abs(c.when.near.lat - loc.lat) < 1e-5 && Math.abs(c.when.near.lng - loc.lng) < 1e-5);
+    if (existing) {
+      this.editCue(existing.name, fromHere);
+      return;
+    }
+    this.cueDraft = { editing: null, lat: loc.lat, lng: loc.lng, fromHere, keepLayers: [] };
+    this.ui.openCueEditor({
+      name: loc.name,
+      lat: loc.lat,
+      lng: loc.lng,
+      radius: 150,
+      theme: null,
+      presets: [],
+      editing: null,
+      where: `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`,
+    });
+  }
+
+  /** "Bind here…": save the spot first, then bind to it. */
+  bindHere() {
+    if (!this.position) {
+      this.ui.setStatus('No position yet \u2014 search somewhere or start GPS first.');
+      return;
+    }
+    this.saveHere();
+    this.openBind(this.pack.locations[0], true);
+  }
+
+  editCue(name, fromHere = null) {
+    const cue = this.pack.cues.find((c) => c.name === name && isEditableCue(c));
+    if (!cue) return;
+    const { lat, lng, radius } = cue.when.near;
+    const presetIds = new Set(LOOP_PRESETS.map((p) => p.id));
+    const layers = cue.layers || [];
+    this.cueDraft = {
+      editing: cue.name,
+      lat,
+      lng,
+      fromHere: fromHere ?? this.isHere({ lat, lng }),
+      // Layers that are not one of the presets are kept as they are.
+      keepLayers: layers.filter((l) => !presetIds.has(l?.name)),
+    };
+    this.ui.openCueEditor({
+      name: cue.name,
+      lat,
+      lng,
+      radius,
+      theme: cue.theme || null,
+      presets: LOOP_PRESETS.filter((p) => layers.some((l) => l?.name === p.id)).map((p) => p.id),
+      editing: cue.name,
+      where: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+    });
+  }
+
+  /** Build an ordinary pack cue from the editor, validate it, and use it. */
+  saveCue({ name, radius, theme, presets }) {
+    const draft = this.cueDraft;
+    if (!draft) return;
+
+    name = String(name || '').trim().slice(0, 80);
+    if (!name) {
+      this.ui.setCueEditorHint('Give it a name.');
+      return;
+    }
+    if (this.pack.cues.some((c) => c.name === name && c.name !== draft.editing)) {
+      this.ui.setCueEditorHint(`There is already a cue called \u201c${name}\u201d.`);
+      return;
+    }
+
+    const layers = [
+      ...LOOP_PRESETS.filter((p) => presets.includes(p.id))
+        .flatMap((p) => p.layers.map((l) => structuredClone(l))),
+      ...draft.keepLayers,
+    ];
+    if (!theme && !layers.length) {
+      this.ui.setCueEditorHint('Pick a theme, a loop, or both.');
+      return;
+    }
+
+    const cue = { name, when: { near: { lat: draft.lat, lng: draft.lng, radius: Math.round(radius) } } };
+    if (theme) cue.theme = theme;
+    if (layers.length) cue.layers = layers;
+    cue._ui = true;
+
+    const errors = validateCue(cue);
+    if (errors.length) {
+      this.ui.setCueEditorHint(errors[0]);
+      return;
+    }
+
+    const at = draft.editing ? this.pack.cues.findIndex((c) => c.name === draft.editing) : -1;
+    if (at >= 0) {
+      this.pack.cues[at] = cue;
+    } else {
+      if (this.pack.cues.length >= 100) {
+        this.ui.setCueEditorHint('A pack holds at most 100 cues.');
+        return;
+      }
+      this.pack.cues.push(cue);
+    }
+
+    savePack(this.pack);
+    this.rebuildCues(draft.editing && draft.editing !== name
+      ? { from: draft.editing, to: name } : null);
+    this.cueDraft = null;
+    this.ui.closeCueEditor();
+    this.ui.setStatus(`Saved cue \u201c${name}\u201d.`);
+
+    // Standing on it: be heard now rather than easing in over several ticks.
+    if (draft.fromHere) this.snapCues = true;
+    this.replan(true);
+  }
+
+  deleteCue(name) {
+    const at = this.pack.cues.findIndex((c) => c.name === name && isEditableCue(c));
+    if (at < 0) return;
+    this.pack.cues.splice(at, 1);
+    savePack(this.pack);
+    this.rebuildCues();
+    if (this.cueDraft?.editing === name) {
+      this.cueDraft = null;
+      this.ui.closeCueEditor();
+    }
+    this.ui.setStatus(`Deleted cue \u201c${name}\u201d.`);
+    this.replan(true);
+  }
+
+  /**
+   * Recompile after an edit. Every surviving cue keeps its strength and latch,
+   * so a loop that is already sounding does not dip, and a held theme does
+   * not drop, just because a different cue changed.
+   */
+  rebuildCues(renamed = null) {
+    const before = new Map(this.cues.map((c) => [c.name, c]));
+    const built = compileCues(this.pack.cues);
+    for (const cue of built.cues) {
+      const old = before.get(renamed && cue.name === renamed.to ? renamed.from : cue.name);
+      if (old) {
+        cue.strength = old.strength;
+        cue.pinned = old.pinned;
+      }
+    }
+    this.cues = built.cues;
+    this.reportCues(built.report);
+    this.renderCueList();
+  }
+
+  renderCueList() {
+    this.ui.renderCueList(this.cues.map((c) => ({
+      name: c.name,
+      description: describeCondition(c.when),
+      does: [
+        c.theme ? `plays ${getTheme(c.theme).id === c.theme ? getTheme(c.theme).name : c.theme}` : null,
+        c.layers.length ? `adds ${c.layers.map((l) => l.name || l.voice).join(', ')}` : null,
+      ].filter(Boolean).join(', '),
+      editable: isEditableCue(c.spec),
+      strength: c.strength,
+    })));
+  }
+
+  isHere(loc) {
+    if (!loc || !this.position) return false;
+    return haversine(this.position.lat, this.position.lng, loc.lat, loc.lng) < HERE_METRES;
   }
 
   /* ------------------------------------------------------------ tag editing */
@@ -594,6 +784,7 @@ class App {
     const jumped = this.snapCues;
     this.activeCues = evaluateCues(this.cues, this.scene, { snap: jumped });
     this.snapCues = false;
+    this.ui.setCueStrengths(this.cues.map((c) => c.strength));
     const pin = pinnedTheme(this.activeCues);
     const base = pin ? getTheme(pin.id) : this.theme;
     const composed = withCues(base, this.activeCues);
@@ -686,6 +877,13 @@ class App {
     this.wakeLock?.release?.().catch(() => {});
     this.wakeLock = null;
   }
+}
+
+/** Made in the cue editor, and shaped so the editor can open it again. */
+function isEditableCue(cue) {
+  const near = cue?.when?.near;
+  return cue?._ui === true && !!near &&
+    Number.isFinite(near.lat) && Number.isFinite(near.lng);
 }
 
 /**
