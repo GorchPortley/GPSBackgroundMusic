@@ -138,14 +138,14 @@ export function validateSpec(spec) {
     if (typeof layer.pattern !== 'string' || !layer.pattern.trim()) {
       errors.push(`${where}: missing "pattern".`);
     } else {
-      const node = parsePattern(layer.pattern);
-      if (node.type === 'error') {
-        errors.push(`${where}: pattern — ${node.message}`);
+      errors.push(...checkPattern(layer.pattern, `${where}: pattern`));
+    }
+    // Optional: what the layer plays in the last bar before a change lands.
+    if (layer.fill !== undefined) {
+      if (typeof layer.fill !== 'string' || !layer.fill.trim()) {
+        errors.push(`${where}: "fill" must be a pattern string.`);
       } else {
-        const bad = queryPattern(node, 0)
-          .map((e) => e.value)
-          .find((v) => readValue(v) === null);
-        if (bad) errors.push(`${where}: pattern — unrecognised value "${bad}".`);
+        errors.push(...checkPattern(layer.fill, `${where}: fill`));
       }
     }
     const kind = VOICES[layer.voice]?.kind;
@@ -192,6 +192,16 @@ export function validateSpec(spec) {
   return { ok: errors.length === 0, errors, warnings };
 }
 
+/** Parse a mini-notation string and report what is wrong with it, if anything. */
+function checkPattern(text, label) {
+  const node = parsePattern(text);
+  if (node.type === 'error') return [`${label} — ${node.message}`];
+  const bad = queryPattern(node, 0)
+    .map((e) => e.value)
+    .find((v) => readValue(v) === null);
+  return bad ? [`${label} — unrecognised value "${bad}".`] : [];
+}
+
 /* ------------------------------------------------------------------ layers */
 
 /**
@@ -199,11 +209,15 @@ export function validateSpec(spec) {
  * just layers with a condition attached.
  */
 export function compileLayers(specLayers) {
-  return (specLayers || []).map((layer) => ({
-    ...layer,
-    node: parsePattern(layer.pattern),
-    def: VOICES[layer.voice],
-  })).filter((layer) => layer.def && layer.node.type !== 'error');
+  return (specLayers || []).map((layer) => {
+    const fill = typeof layer.fill === 'string' ? parsePattern(layer.fill) : null;
+    return {
+      ...layer,
+      node: parsePattern(layer.pattern),
+      fillNode: fill && fill.type !== 'error' ? fill : null,
+      def: VOICES[layer.voice],
+    };
+  }).filter((layer) => layer.def && layer.node.type !== 'error');
 }
 
 /**
@@ -222,9 +236,16 @@ export function resolveLevels(layers, mood, scene) {
   return levels;
 }
 
-/** Schedule one step for a set of compiled layers. */
+/**
+ * Schedule one step for a set of compiled layers.
+ *
+ * `pos.stepsToCommit` (engine.js) is set only while a change is waiting for
+ * its seam; in the final bar before it lands, a layer with a `fill` plays
+ * that pattern instead of its loop.
+ */
 export function stepLayers(io, plan, pos, layers, levels) {
-  const { stepInBar, bar, time, stepDur, barDur } = pos;
+  const { stepInBar, bar, time, stepDur, barDur, stepsToCommit } = pos;
+  const finalBar = stepsToCommit !== undefined && stepsToCommit <= STEPS_PER_BAR;
   const chordIndex = Math.floor(bar / plan.barsPerChord) % plan.progression.length;
   const degree = plan.progression[chordIndex];
 
@@ -235,7 +256,8 @@ export function stepLayers(io, plan, pos, layers, levels) {
 
     // One cycle is one bar. Loops advance with the bar count, so a
     // <> alternation moves on each time round.
-    for (const ev of queryPattern(layer.node, bar)) {
+    const node = finalBar && layer.fillNode ? layer.fillNode : layer.node;
+    for (const ev of queryPattern(node, bar)) {
       const exact = ev.begin * STEPS_PER_BAR;
       if (Math.floor(exact + 1e-9) !== stepInBar) continue;
 

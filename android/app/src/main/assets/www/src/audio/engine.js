@@ -14,6 +14,7 @@
  */
 
 import { Ambience } from './ambience.js';
+import { sweepVoice } from './voices.js';
 
 export const STEPS_PER_BAR = 16;   // 16th notes in 4/4
 export const BARS_PER_PHRASE = 4;
@@ -26,6 +27,8 @@ const START_DELAY_S = 0.12;
 /** How fast continuous parameters chase their target (seconds). */
 const MORPH_TC = 2.5;
 const REVERB_CROSSFADE_S = 3.0;
+/** Per-step fraction of the way the tempo moves toward its target. */
+const BPM_EASE = 0.02;
 
 /**
  * Fixed gain of the ambience bus. With the per-generator maxima in
@@ -45,6 +48,22 @@ const AMBIENCE_BUS = 0.033;
 const CUE_PAN_TC = 0.8;
 const CUE_PAN_MAX = 0.7;
 const CUE_PANNER_GRACE_S = 20;
+
+/**
+ * Handover (C3.6): when a change of theme or tonic is about to commit, one beat
+ * before the downbeat a noise riser plays into it and the reverb return
+ * blooms by BLOOM_GAIN for BLOOM_HOLD_S, so the cut sounds chosen. The riser
+ * is quiet (it rides on top of a busy bar); the bloom rises quickly and falls
+ * back gently to whatever the current plan's reverb mix is by then.
+ */
+const SWELL_STEPS = 4;          // one beat of 16ths before the commit
+const SWELL_GAIN = 0.04;
+const SWELL_FROM = 400;
+const SWELL_TO = 6000;
+const BLOOM_GAIN = 1.4;
+const BLOOM_HOLD_S = 2.5;
+const BLOOM_RISE_TC = 0.25;
+const BLOOM_FALL_TC = 0.6;
 
 export class AudioEngine {
   constructor() {
@@ -73,6 +92,14 @@ export class AudioEngine {
 
     /** Spatial cue name → { node: StereoPannerNode, seen: ctx time }. */
     this._cuePanners = new Map();
+
+    // Handover swell (C3.6). `_reverbMix` is the current plan's reverb return
+    // target; `_bloom` ({ at, until } in ctx time) multiplies it for a while.
+    // `_swell` is the riser scheduled for the commit at `commitStep`, kept so
+    // it can be faded out if that commit is superseded before it lands.
+    this._reverbMix = 0.5;
+    this._bloom = null;
+    this._swell = null;
   }
 
   /* ----------------------------------------------------------- lifecycle */
@@ -473,9 +500,19 @@ export class AudioEngine {
       // reassignment would let the very next tick quietly downgrade a jump
       // back to a full phrase — which is the slow handover it was meant to fix.
       this._pending = { plan, stepFn, urgent: urgent || !!this._pending?.urgent };
+      // A riser already heading for this seam stays only if what will land
+      // there is still a handover.
+      if (!isHandover(this.plan, plan)) this._cancelSwell();
     } else {
       // Same harmony and same theme, new shading — keep the current phrase and
       // take everything else immediately.
+      //
+      // A change still waiting for its seam has been overtaken: the world is
+      // back to what is already playing, so it must not land (nor its riser).
+      if (this._pending) {
+        this._pending = null;
+        this._cancelSwell();
+      }
       this.plan = { ...plan, root: this.plan.root, scale: this.plan.scale,
         progression: this.plan.progression, barsPerChord: this.plan.barsPerChord };
       this.stepFn = stepFn;
@@ -492,7 +529,8 @@ export class AudioEngine {
     // Ramp rather than jump: switching theme mid-walk should not click.
     set(this.themeTrim.gain, plan.trim ?? 1, 0.6);
 
-    set(this.reverbReturn.gain, plan.fx.reverbMix);
+    this._reverbMix = plan.fx.reverbMix;
+    this._setReverbReturn();
     set(this.delayReturn.gain, plan.fx.delayMix);
     set(this.delayFeedback.gain, Math.min(0.72, plan.fx.delayFeedback));
     set(this.delayTone.frequency, plan.fx.delayTone, 1.5);
@@ -550,6 +588,80 @@ export class AudioEngine {
     }
   }
 
+  /**
+   * The one place reverbReturn.gain is automated. Its target is the plan's
+   * reverb mix, times BLOOM_GAIN while a handover bloom is on; the fall back
+   * is scheduled at the bloom's end, to the mix as it is *now*. Any later
+   * replan lands here too and reschedules the lot, so the bloom and the
+   * plan's own glide never leave a stale target behind.
+   */
+  _setReverbReturn() {
+    const g = this.reverbReturn.gain;
+    const now = this.ctx.currentTime;
+    const mix = this._reverbMix;
+    const b = this._bloom;
+    g.cancelScheduledValues(now);
+    if (b && b.until > now) {
+      if (b.at > now) g.setTargetAtTime(mix, now, MORPH_TC);
+      g.setTargetAtTime(mix * BLOOM_GAIN, Math.max(now, b.at), BLOOM_RISE_TC);
+      g.setTargetAtTime(mix, b.until, BLOOM_FALL_TC);
+    } else if (b && now < b.until + 4 * BLOOM_FALL_TC) {
+      // Still falling back: keep the fall's pace rather than the slow morph.
+      g.setTargetAtTime(mix, now, BLOOM_FALL_TC);
+    } else {
+      this._bloom = null;
+      g.setTargetAtTime(mix, now, MORPH_TC);
+    }
+  }
+
+  /**
+   * One beat before a handover lands: a noise riser into the downbeat and a
+   * reverb bloom. The riser goes through its own pair of gains (dry, reverb
+   * send) so _cancelSwell can fade it if the change is overtaken.
+   */
+  _startSwell(time, commitStep) {
+    const ctx = this.ctx;
+    // Exactly as far as the commit step will be: the tempo eases a little
+    // every step (see the end of _tick), so this is not quite 4 × stepDur.
+    let dur = 0;
+    for (let k = 0, bpm = this._bpm; k < SWELL_STEPS; k++) {
+      bpm += (this._targetBpm - bpm) * BPM_EASE;
+      dur += 60 / bpm / 4;
+    }
+    const dry = ctx.createGain();
+    const rev = ctx.createGain();
+    dry.connect(this.dry);
+    rev.connect(this.reverbBus);
+    sweepVoice({ ...this.io, dry, reverb: rev }, {
+      time, gain: SWELL_GAIN, from: SWELL_FROM, to: SWELL_TO, dur,
+    });
+    this._swell = { commitStep, time, commitTime: time + dur, nodes: [dry, rev] };
+    // Gone well after the riser and its send have finished.
+    const ms = Math.max(0, time + dur + 1 - ctx.currentTime) * 1000;
+    setTimeout(() => { try { dry.disconnect(); rev.disconnect(); } catch { /* gone */ } }, ms);
+
+    this._bloom = { at: time, until: time + BLOOM_HOLD_S };
+    this._setReverbReturn();
+    this.swellLog?.push({ time, commitTime: time + dur, commitStep });
+  }
+
+  /** The handover this riser was for will not happen: fade it and the bloom. */
+  _cancelSwell() {
+    const s = this._swell;
+    if (!s || !this.ctx) return;
+    this._swell = null;
+    const now = this.ctx.currentTime;
+    for (const n of s.nodes) {
+      n.gain.cancelScheduledValues(now);
+      n.gain.setTargetAtTime(0, now, 0.03);
+    }
+    if (this._bloom?.at === s.time) {
+      this._bloom = null;
+      this._setReverbReturn();
+    }
+    this.swellLog?.push({ cancelled: true, at: now, commitStep: s.commitStep });
+  }
+
   /** Debug: live spatial-cue panners, name → current pan. */
   cuePanStats() {
     return Object.fromEntries([...this._cuePanners].map(([name, { node }]) => [name, node.pan.value]));
@@ -559,6 +671,7 @@ export class AudioEngine {
   _commit(plan, stepFn) {
     this.plan = plan;
     this.stepFn = stepFn;
+    this._swell = null;   // landed; the bloom runs out on its own
     if (!this.ctx) return;
 
     const now = this.ctx.currentTime;
@@ -595,8 +708,20 @@ export class AudioEngine {
         this._pending = null;
       }
 
+      // Steps until the pending change lands (1..boundary), for fills; absent
+      // when nothing is waiting.
+      const stepsToCommit = this._pending ? boundary - (step % boundary) : undefined;
+
       if (this.plan && this.stepFn) {
         const stepDur = 60 / this._bpm / 4;
+
+        // One beat out from a handover: riser and bloom. Keyed on the commit
+        // step so a seam gets at most one, whatever replans arrive meanwhile.
+        if (stepsToCommit === SWELL_STEPS && isHandover(this.plan, this._pending.plan) &&
+            this._swell?.commitStep !== step + SWELL_STEPS) {
+          this._startSwell(this._nextStepTime, step + SWELL_STEPS);
+        }
+
         // A theme throwing must not take the transport down with it — that
         // matters most for themes someone else wrote.
         try {
@@ -609,6 +734,7 @@ export class AudioEngine {
             bar: Math.floor(step / STEPS_PER_BAR),
             barInPhrase: Math.floor(step / STEPS_PER_BAR) % BARS_PER_PHRASE,
             phrase: Math.floor(step / STEPS_PER_PHRASE),
+            stepsToCommit,
           });
         } catch (err) {
           if (!this._stepErrorLogged) {
@@ -619,7 +745,7 @@ export class AudioEngine {
       }
 
       // Ease toward the target tempo so speeding up feels like acceleration.
-      this._bpm += (this._targetBpm - this._bpm) * 0.02;
+      this._bpm += (this._targetBpm - this._bpm) * BPM_EASE;
       this._nextStepTime += 60 / this._bpm / 4;
       this._step++;
     }
@@ -655,4 +781,16 @@ function isDiscreteChange(a, b) {
     a.scale !== b.scale ||
     a.barsPerChord !== b.barsPerChord ||
     a.progression.join() !== b.progression.join();
+}
+
+/**
+ * Is this discrete change a *handover* — a new theme or a new tonic — rather
+ * than a re-colouring within one (mode, chord sequence, chord rate)? Only
+ * handovers get the riser and bloom. Mode alone is left out on purpose: it
+ * follows the brightness of the scene, so it flips on its own while the mood
+ * settles after a jump and now and then on a walk — a riser each time would
+ * turn a shading into an event and make the real handovers mean less.
+ */
+function isHandover(a, b) {
+  return a.themeId !== b.themeId || a.root !== b.root;
 }

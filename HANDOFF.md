@@ -175,7 +175,10 @@ of the next 4-bar **phrase**. It is set only on the jump path: `goTo()` arms
 `pendingJump`; `fetchPlaces` converts it to `snapCues` once the new scene has
 actually arrived; `replan` consumes it. In the engine, urgency persists in
 `_pending` until the change commits, because position ticks re-call
-`applyPlan` every second with `urgent: false`. *Noticed by:* the jump test
+`applyPlan` every second with `urgent: false`. A pending change is dropped
+if a later `applyPlan` matches what is already playing (you went back), and
+so is the handover riser scheduled for it (C3.6; `reverbReturn` is only ever
+automated through `_setReverbReturn`). *Noticed by:* the jump test
 showing 12–16 s instead of 1–3 s.
 
 ### 3.6 Cues are strengths, not booleans

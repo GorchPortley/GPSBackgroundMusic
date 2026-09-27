@@ -143,6 +143,7 @@ dark modes so an overworld tune never turns funereal.
 | `name` | Used for the level; must be unique. `drone` and `air` are reserved |
 | `voice` | See the voice table below |
 | `pattern` | The loop, in mini-notation |
+| `fill` | Optional. A second pattern played *instead of* `pattern` in the last bar before a theme, key or chord change lands — a drum fill into the new section. Code themes can do the same with `pos.stepsToCommit` (steps until the change, set only while one is waiting) |
 | `octave` | Octaves above the tonic. `0` is bass, `2` mid, `3–4` melody |
 | `gain` | Loudness of this layer. Defaults per voice |
 | `level` | When it is audible (above) |
@@ -282,6 +283,8 @@ Anything continuous — tempo, filter cutoffs, reverb size, layer levels — gli
 to its new value over seconds. Anything discrete — key, mode, chord sequence —
 is held until the next four-bar phrase boundary. You return a static
 description; the engine handles getting there smoothly.
+When the change is a new theme or a new tonic, the engine itself plays a short noise
+riser into the downbeat and lets the reverb bloom for a moment.
 
 Return `trim` to balance your theme's loudness against the others. Check it by
 rendering offline and comparing RMS, rather than by ear at one volume.
