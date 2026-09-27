@@ -177,10 +177,15 @@ strength. `examples/cues-example.json` is a working pack to import — see
 
 ### Example packs
 
-`examples/` holds working packs to import from the Anywhere panel:
+`examples/` holds working packs to import from the Anywhere panel.
+`landmarks`, `ocarina` and `cues-example` are also bundled in the app under
+`public/packs/` (listed in `public/packs/index.json`): pick one from
+**Load an example…** in the Anywhere panel — no file picker needed.
+`belmont-walk.json` is deliberately not bundled.
 
 | Pack | What it shows |
 |---|---|
+| `landmarks.json` | Ten famous places, six themes, deliberately unsubtle |
 | `cues-example.json` | The three ways to bind a loop to a place, minimal |
 | `belmont-walk.json` | Every engine feature exercised on one 30-minute walk |
 | `ocarina.json` | Three themes that hand over to each other by region |

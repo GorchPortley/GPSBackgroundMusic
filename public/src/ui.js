@@ -32,6 +32,7 @@ export class UI {
       exportPack: $('exportPack'),
       importPack: $('importPack'),
       importFile: $('importFile'),
+      examplePacks: $('examplePacks'),
       pasteToggle: $('pasteToggle'),
       pasteRow: $('pasteRow'),
       pasteArea: $('pasteArea'),
@@ -188,6 +189,13 @@ export class UI {
       this.el.importFile.value = '';
     });
 
+    this.el.examplePacks.addEventListener('change', () => {
+      const sel = this.el.examplePacks;
+      const opt = sel.selectedOptions[0];
+      if (opt?.value) this.h.onExamplePack?.(opt.value, opt.textContent);
+      sel.selectedIndex = 0;
+    });
+
     this.el.pasteToggle.addEventListener('click', () => {
       const showing = !this.el.pasteRow.hidden;
       this.el.pasteRow.hidden = showing;
@@ -290,6 +298,21 @@ export class UI {
 
   setPackHint(text) {
     this.el.packHint.textContent = text;
+  }
+
+  /** Fill the "Load an example…" selector from public/packs/index.json. */
+  setExamplePacks(list) {
+    const sel = this.el.examplePacks;
+    const placeholder = sel.options[0];
+    sel.replaceChildren(placeholder);
+    for (const p of list) {
+      const opt = document.createElement('option');
+      opt.value = p.file;
+      opt.textContent = p.name;
+      if (p.blurb) opt.title = p.blurb;
+      sel.append(opt);
+    }
+    sel.selectedIndex = 0;
   }
 
   /* -------------------------------------------------------------- setters */

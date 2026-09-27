@@ -1,0 +1,1073 @@
+{
+  "version": 1,
+  "_about": [
+    "OCARINA — an adventure-score pack in the spirit of late-90s Nintendo",
+    "soundtracks: ocarina and harp over modal strings, a different piece for",
+    "every kind of place you walk into.",
+    "",
+    "ORIGINAL MUSIC. Every melody here was written for this pack. None of it is",
+    "transcribed from Ocarina of Time — those pieces are Koji Kondo's and remain",
+    "Nintendo's copyright, and packs are made to be shared. What is borrowed is",
+    "the idiom, which is not anyone's property: modal harmony, ocarina timbre,",
+    "rolled harp, question-and-answer phrasing, and the habit of giving each",
+    "region its own theme.",
+    "",
+    "It would not work as a transcription anyway. The engine picks the key and",
+    "mode from your surroundings and transposes everything to fit, so a fixed",
+    "tune would be pulled out of shape the moment you walked down the street.",
+    "Degrees are relative, so these phrases stay musical wherever they land.",
+    "",
+    "WHERE EACH PIECE APPEARS, verified against live data for Belmont:",
+    "  Eternal Joy Church      -> temple pinned, Sanctum 1.00",
+    "  Belmont Park            -> Woodland 1.00",
+    "  Disc Golf Course        -> Trial grounds 1.00",
+    "  White Sail Inn          -> Tavern 1.00",
+    "  Dot's Market / Sweet Retreat -> market pinned, Market square 1.00",
+    "  Immaculate Conception School -> Schoolyard 1.00",
+    "  Great Miami riverfront  -> Waterside 1.00",
+    "",
+    "The 30-minute loop north (church, park, disc golf, back past the bar) hits",
+    "four of those. To hear the market theme, walk SOUTH to Dot's Market or WEST",
+    "to the Sweet Retreat strip — or just jump to the saved places in Explore.",
+    "",
+    "HOW IT IS PUT TOGETHER",
+    "  hyrule-field   the default: pastoral overworld, ocarina and harp",
+    "  market-town    pinned in busy shopping and eating streets",
+    "  temple         pinned near churches and other sacred ground",
+    "  7 cues         layer extra parts, or hand over to one of those themes",
+    "",
+    "TUNING. Cue thresholds are category SHARES, measured in a real suburb:",
+    "  sacred 0.49 by a church, 0.13 elsewhere",
+    "  nature 0.39 in a park, 0.00-0.15 elsewhere",
+    "  food   0.47 on a restaurant strip, 0.00 in housing",
+    "  sport  0.33 at playing fields, nightlife 0.31 outside a bar",
+    "Shares are damped where little is mapped, so a dominant category lands",
+    "around 0.2-0.4 rather than 1.0. If a cue never fires where you",
+    "live, lower its 'min' rather than assuming it is broken."
+  ],
+  "tagOverrides": {},
+  "locations": [
+    {
+      "name": "Eternal Joy Church — temple",
+      "lat": 39.731184,
+      "lng": -84.13143
+    },
+    {
+      "name": "Belmont Park — woodland",
+      "lat": 39.732554,
+      "lng": -84.133423
+    },
+    {
+      "name": "Disc Golf — trial grounds",
+      "lat": 39.732255,
+      "lng": -84.136518
+    },
+    {
+      "name": "White Sail Inn — tavern",
+      "lat": 39.726688,
+      "lng": -84.127265
+    },
+    {
+      "name": "Dot's Market — market",
+      "lat": 39.722338,
+      "lng": -84.130729
+    },
+    {
+      "name": "Sweet Retreat strip — market",
+      "lat": 39.729341,
+      "lng": -84.141555
+    },
+    {
+      "name": "Immaculate Conception — schoolyard",
+      "lat": 39.734356,
+      "lng": -84.1399
+    }
+  ],
+  "theme": "hyrule-field",
+  "themes": [
+    {
+      "id": "hyrule-field",
+      "name": "Field",
+      "description": "Ocarina and harp over open strings. The road between places.",
+      "bpm": [
+        76,
+        122,
+        "e"
+      ],
+      "barsPerChord": 2,
+      "trim": 1.05,
+      "rootRange": [
+        40,
+        50
+      ],
+      "modes": [
+        "aeolian",
+        "dorian",
+        "minorPentatonic",
+        "mixolydian",
+        "ionian",
+        "lydian"
+      ],
+      "progressions": [
+        {
+          "name": "i — VII — VI — VII",
+          "degrees": [
+            0,
+            6,
+            5,
+            6
+          ],
+          "brightness": 0.22
+        },
+        {
+          "name": "i — VI — III — VII",
+          "degrees": [
+            0,
+            5,
+            2,
+            6
+          ],
+          "brightness": 0.38
+        },
+        {
+          "name": "I — V — vi — IV",
+          "degrees": [
+            0,
+            4,
+            5,
+            3
+          ],
+          "brightness": 0.6
+        },
+        {
+          "name": "I — IV — I — V",
+          "degrees": [
+            0,
+            3,
+            0,
+            4
+          ],
+          "brightness": 0.78
+        },
+        {
+          "name": "I — II — IV — I",
+          "degrees": [
+            0,
+            1,
+            3,
+            0
+          ],
+          "brightness": 0.92
+        }
+      ],
+      "drone": [
+        0.035,
+        0.11,
+        "s"
+      ],
+      "air": [
+        0.006,
+        0.024,
+        "s"
+      ],
+      "droneCutoff": [
+        180,
+        480,
+        "b"
+      ],
+      "airCutoff": [
+        800,
+        3000,
+        "b"
+      ],
+      "fx": {
+        "reverbMix": [
+          0.2,
+          0.56,
+          "s"
+        ],
+        "reverbSeconds": [
+          1.6,
+          5.2,
+          "s"
+        ],
+        "delayMix": [
+          0.06,
+          0.22,
+          "d"
+        ],
+        "delayFeedback": [
+          0.16,
+          0.34,
+          "s"
+        ],
+        "delayTone": [
+          1600,
+          4400,
+          "b"
+        ]
+      },
+      "layers": [
+        {
+          "_note": "Open string bed. Fifths, no third, so it sits under any mode.",
+          "name": "strings",
+          "voice": "strings",
+          "pattern": "0@3 4",
+          "octave": 2,
+          "gain": 0.06,
+          "chordSize": 3,
+          "level": 0.9,
+          "params": {
+            "cutoff": [
+              850,
+              2900,
+              "b"
+            ],
+            "detune": 6,
+            "vibrato": [
+              5,
+              11,
+              "w"
+            ]
+          }
+        },
+        {
+          "_note": "A wide halo for open ground — closes down on a shopping street.",
+          "name": "halo",
+          "voice": "pad",
+          "pattern": "0",
+          "octave": 3,
+          "gain": 0.032,
+          "chordSize": 4,
+          "level": [
+            "s",
+            0.55,
+            0.35
+          ],
+          "params": {
+            "wave": "triangle",
+            "detune": 8,
+            "cutoff": [
+              900,
+              2200,
+              "b"
+            ],
+            "reverb": 0.8
+          }
+        },
+        {
+          "_note": "Walking bass. Root, fifth, root — unhurried.",
+          "name": "bass",
+          "voice": "bass",
+          "pattern": "0 ~ ~ 4 ~ ~ 0 ~",
+          "octave": 0,
+          "gain": 0.22,
+          "dur": 2.2,
+          "level": [
+            "e",
+            0.14,
+            0.32
+          ],
+          "params": {
+            "cutoff": [
+              300,
+              580,
+              "b"
+            ]
+          }
+        },
+        {
+          "_note": "The gallop. Only once there is real energy — crossing open ground.",
+          "name": "gallop",
+          "voice": "bass",
+          "pattern": "~ 0 0 ~ ~ 4 4 ~",
+          "octave": 1,
+          "gain": 0.1,
+          "dur": 0.9,
+          "level": [
+            "e",
+            0.52,
+            0.3
+          ],
+          "params": {
+            "cutoff": [
+              420,
+              900,
+              "b"
+            ]
+          }
+        },
+        {
+          "_note": "Rolled harp. [] packs three notes into one slot, which is the roll.",
+          "name": "harp",
+          "voice": "pluck",
+          "pattern": "[0 2 4] ~ [4 6 4] ~ [2 4 2] ~ <0 7> ~",
+          "octave": 3,
+          "gain": 0.075,
+          "level": [
+            "d",
+            0.18,
+            0.34
+          ],
+          "params": {
+            "decay": [
+              1.4,
+              3.0,
+              "s"
+            ],
+            "bright": [
+              0.2,
+              0.55,
+              "b"
+            ],
+            "pan": -0.22,
+            "delay": 0.2
+          }
+        },
+        {
+          "_note": "The ocarina. Question in one bar, answer in the next, via <>.",
+          "name": "ocarina",
+          "voice": "flute",
+          "pattern": "<0 4> ~ ~ <3 7> ~ <4 5>@2 ~ <2 0> ~",
+          "octave": 4,
+          "gain": 0.085,
+          "dur": 3,
+          "humanise": 0.014,
+          "level": [
+            "b",
+            0.5,
+            0.3
+          ],
+          "params": {
+            "breath": [
+              0.26,
+              0.12,
+              "w"
+            ],
+            "vibrato": 13,
+            "reverb": 0.6,
+            "delay": 0.25
+          }
+        },
+        {
+          "_note": "A far-off answering horn at the top of each phrase.",
+          "name": "horn",
+          "voice": "pulse",
+          "pattern": "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ 4@3 ~ ~",
+          "octave": 2,
+          "gain": 0.04,
+          "dur": 4,
+          "level": [
+            "s",
+            0.5,
+            0.35
+          ],
+          "params": {
+            "duty": 0.32,
+            "cutoff": [
+              900,
+              2000,
+              "b"
+            ],
+            "attack": 0.09,
+            "release": 0.3,
+            "vibrato": 9
+          }
+        },
+        {
+          "_note": "Frame drum, 3+3+2. Folk, not a kit.",
+          "name": "drum",
+          "voice": "kick",
+          "pattern": "x ~ ~ x ~ ~ x ~",
+          "gain": 0.24,
+          "level": [
+            "e",
+            0.3,
+            0.34
+          ],
+          "params": {
+            "tone": 160
+          }
+        },
+        {
+          "_note": "Woodblock on the backbeat.",
+          "name": "block",
+          "voice": "rim",
+          "pattern": "~ ~ ~ ~ x ~ ~ ~ ~ ~ ~ ~ x ~ ~ ~",
+          "gain": 0.05,
+          "level": [
+            "e",
+            0.44,
+            0.32
+          ]
+        },
+        {
+          "_note": "Shaker fills in as the road gets busier.",
+          "name": "shaker",
+          "voice": "shaker",
+          "pattern": "~ x ~ x ~ x ~ x",
+          "gain": 0.02,
+          "level": [
+            "d",
+            0.45,
+            0.35
+          ],
+          "params": {
+            "decay": 0.08
+          }
+        },
+        {
+          "_note": "A distant bell at phrase tops, only where it feels wide.",
+          "name": "bell",
+          "voice": "bell",
+          "pattern": "7 ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~",
+          "octave": 5,
+          "gain": 0.04,
+          "level": [
+            "s",
+            0.66,
+            0.3
+          ],
+          "params": {
+            "decay": 4.5,
+            "ratio": 2.01,
+            "index": 2.5,
+            "reverb": 0.9
+          }
+        }
+      ]
+    },
+    {
+      "id": "market-town",
+      "name": "Market",
+      "description": "Bustling pizzicato and hand drums. Streets full of shops.",
+      "bpm": [
+        104,
+        140,
+        "e"
+      ],
+      "barsPerChord": 1,
+      "trim": 1.65,
+      "rootRange": [
+        42,
+        51
+      ],
+      "modes": [
+        "dorian",
+        "mixolydian",
+        "ionian",
+        "majorPentatonic",
+        "lydian"
+      ],
+      "progressions": [
+        {
+          "name": "I — V — vi — IV",
+          "degrees": [
+            0,
+            4,
+            5,
+            3
+          ],
+          "brightness": 0.5
+        },
+        {
+          "name": "I — IV — V — I",
+          "degrees": [
+            0,
+            3,
+            4,
+            0
+          ],
+          "brightness": 0.72
+        },
+        {
+          "name": "I — ii — IV — V",
+          "degrees": [
+            0,
+            1,
+            3,
+            4
+          ],
+          "brightness": 0.9
+        }
+      ],
+      "drone": 0.02,
+      "air": 0.008,
+      "droneCutoff": 260,
+      "airCutoff": 2200,
+      "fx": {
+        "reverbMix": [
+          0.1,
+          0.26,
+          "s"
+        ],
+        "reverbSeconds": [
+          0.8,
+          1.8,
+          "s"
+        ],
+        "delayMix": 0.1,
+        "delayFeedback": 0.18,
+        "delayTone": [
+          2400,
+          4600,
+          "b"
+        ]
+      },
+      "layers": [
+        {
+          "name": "pizz",
+          "voice": "pizz",
+          "pattern": "0 ~ 4 ~ 2 ~ 4 ~",
+          "octave": 1,
+          "gain": 0.2,
+          "level": 1,
+          "params": {
+            "decay": 0.42,
+            "cutoff": [
+              800,
+              1300,
+              "b"
+            ]
+          }
+        },
+        {
+          "name": "chords",
+          "voice": "pluck",
+          "pattern": "~ [2 4] ~ [4 6] ~ [2 4] ~ [0 2]",
+          "octave": 3,
+          "gain": 0.06,
+          "level": 0.85,
+          "params": {
+            "decay": 0.5,
+            "bright": 0.7,
+            "pan": 0.2
+          }
+        },
+        {
+          "name": "whistle",
+          "voice": "flute",
+          "pattern": "<4 2> ~ <5 4> <7 5> ~ <4 2>@2 ~ ~",
+          "octave": 4,
+          "gain": 0.07,
+          "dur": 1.8,
+          "level": [
+            "b",
+            0.45,
+            0.3
+          ],
+          "params": {
+            "breath": 0.16,
+            "vibrato": 11,
+            "reverb": 0.35
+          }
+        },
+        {
+          "name": "tabor",
+          "voice": "kick",
+          "pattern": "x ~ x ~ ~ x ~ ~",
+          "gain": 0.22,
+          "level": [
+            "e",
+            0.2,
+            0.3
+          ],
+          "params": {
+            "tone": 175
+          }
+        },
+        {
+          "name": "clap",
+          "voice": "rim",
+          "pattern": "~ ~ ~ ~ x ~ ~ ~",
+          "gain": 0.06,
+          "level": [
+            "e",
+            0.35,
+            0.3
+          ]
+        },
+        {
+          "name": "tambourine",
+          "voice": "shaker",
+          "pattern": "x*8",
+          "gain": 0.022,
+          "level": [
+            "d",
+            0.4,
+            0.35
+          ],
+          "params": {
+            "decay": 0.06
+          }
+        }
+      ]
+    },
+    {
+      "id": "temple",
+      "name": "Temple",
+      "description": "Vast, slow and unresolved. Sacred ground.",
+      "bpm": [
+        54,
+        74,
+        "e"
+      ],
+      "barsPerChord": 4,
+      "trim": 1.15,
+      "rootRange": [
+        33,
+        42
+      ],
+      "modes": [
+        "phrygian",
+        "aeolian",
+        "harmonicMinor",
+        "dorian",
+        "mixolydian"
+      ],
+      "progressions": [
+        {
+          "name": "drone",
+          "degrees": [
+            0
+          ],
+          "brightness": 0.3
+        },
+        {
+          "name": "i — ♭II",
+          "degrees": [
+            0,
+            1
+          ],
+          "brightness": 0.14
+        },
+        {
+          "name": "i — iv",
+          "degrees": [
+            0,
+            3
+          ],
+          "brightness": 0.45
+        },
+        {
+          "name": "I — IV",
+          "degrees": [
+            0,
+            3
+          ],
+          "brightness": 0.7
+        }
+      ],
+      "drone": [
+        0.09,
+        0.17,
+        "s"
+      ],
+      "air": [
+        0.018,
+        0.04,
+        "s"
+      ],
+      "droneCutoff": [
+        120,
+        300,
+        "b"
+      ],
+      "airCutoff": [
+        400,
+        1600,
+        "b"
+      ],
+      "airQ": 1.4,
+      "fx": {
+        "reverbMix": [
+          0.42,
+          0.68,
+          "s"
+        ],
+        "reverbSeconds": [
+          4.5,
+          8.5,
+          "s"
+        ],
+        "delayMix": 0.12,
+        "delayFeedback": [
+          0.3,
+          0.46,
+          "s"
+        ],
+        "delayTone": [
+          700,
+          2200,
+          "b"
+        ]
+      },
+      "layers": [
+        {
+          "_note": "Quartal voicing — fourths, not thirds. Refuses to resolve.",
+          "name": "vault",
+          "voice": "pad",
+          "pattern": "0",
+          "octave": 2,
+          "gain": 0.07,
+          "chordSize": 4,
+          "level": 1,
+          "params": {
+            "wave": "sawtooth",
+            "detune": [
+              10,
+              22,
+              "t"
+            ],
+            "cutoff": [
+              420,
+              1500,
+              "b"
+            ],
+            "reverb": 0.9
+          }
+        },
+        {
+          "name": "choir",
+          "voice": "strings",
+          "pattern": "0@3 1",
+          "octave": 3,
+          "gain": 0.045,
+          "chordSize": 3,
+          "level": [
+            "s",
+            0.4,
+            0.4
+          ],
+          "params": {
+            "cutoff": [
+              600,
+              1600,
+              "b"
+            ],
+            "detune": 9,
+            "vibrato": 4
+          }
+        },
+        {
+          "name": "deep-bell",
+          "voice": "bell",
+          "pattern": "0 ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~",
+          "octave": 3,
+          "gain": 0.06,
+          "level": 0.9,
+          "params": {
+            "decay": 7,
+            "ratio": 1.414,
+            "index": [
+              2.5,
+              5,
+              "t"
+            ],
+            "reverb": 0.95
+          }
+        },
+        {
+          "name": "sub",
+          "voice": "bass",
+          "pattern": "0@7 4",
+          "octave": 0,
+          "gain": 0.2,
+          "dur": 10,
+          "level": [
+            "e",
+            0.05,
+            0.3
+          ],
+          "params": {
+            "cutoff": [
+              150,
+              300,
+              "b"
+            ]
+          }
+        },
+        {
+          "name": "drip",
+          "voice": "blip",
+          "pattern": "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ 9 ~ ~ ~ ~ ~",
+          "octave": 5,
+          "gain": 0.02,
+          "level": [
+            "t",
+            0.1,
+            0.12
+          ],
+          "params": {
+            "duty": 0.5,
+            "decay": 0.14,
+            "bend": -3,
+            "reverb": 0.9
+          }
+        },
+        {
+          "name": "footstep",
+          "voice": "kick",
+          "pattern": "x ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ x ~ ~ ~",
+          "gain": 0.16,
+          "level": [
+            "e",
+            0.12,
+            0.25
+          ],
+          "params": {
+            "tone": 95
+          }
+        }
+      ]
+    }
+  ],
+  "cues": [
+    {
+      "_note": "CATEGORY — woodland. Layers a bright figure over whatever is playing.",
+      "name": "Woodland",
+      "when": {
+        "category": "nature",
+        "min": 0.1,
+        "full": 0.28
+      },
+      "layers": [
+        {
+          "name": "forest-flute",
+          "voice": "flute",
+          "pattern": "4 ~ 5 ~ 7@2 ~ ~ <5 9> ~ ~ 4 ~",
+          "octave": 4,
+          "gain": 0.055,
+          "dur": 2.4,
+          "params": {
+            "breath": 0.24,
+            "vibrato": 10,
+            "reverb": 0.7,
+            "delay": 0.3
+          }
+        },
+        {
+          "name": "woodblock",
+          "voice": "rim",
+          "pattern": "~ ~ x ~ ~ x ~ ~ x ~ ~ ~ x ~ ~ ~",
+          "gain": 0.035,
+          "params": {
+            "reverb": 0.45
+          }
+        },
+        {
+          "name": "leaves",
+          "voice": "shaker",
+          "pattern": "x ~ ~ x ~ x ~ ~ x ~ ~ ~ x ~ x ~",
+          "gain": 0.015,
+          "params": {
+            "decay": 0.14
+          }
+        }
+      ]
+    },
+    {
+      "_note": "CATEGORY — water. Thresholds are low because water is always a minority of tagged places, even standing on a riverbank.",
+      "name": "Waterside",
+      "when": {
+        "category": "water",
+        "min": 0.03,
+        "full": 0.13
+      },
+      "layers": [
+        {
+          "name": "shimmer",
+          "voice": "bell",
+          "pattern": "<7 9> ~ ~ ~ <4 2> ~ ~ ~",
+          "octave": 5,
+          "gain": 0.04,
+          "params": {
+            "decay": 4,
+            "ratio": 3.7,
+            "index": 2,
+            "reverb": 0.9,
+            "delay": 0.4
+          }
+        },
+        {
+          "name": "swell",
+          "voice": "sweep",
+          "pattern": "x ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~",
+          "gain": 0.035,
+          "params": {
+            "dur": 3.5,
+            "from": 250,
+            "to": 3000,
+            "q": 1.8,
+            "reverb": 0.85
+          }
+        }
+      ]
+    },
+    {
+      "_note": "THEME PIN — a busy shopping or eating street becomes the market.",
+      "name": "Market square",
+      "when": {
+        "any": [
+          {
+            "category": "retail",
+            "min": 0.16,
+            "full": 0.3
+          },
+          {
+            "category": "food",
+            "min": 0.18,
+            "full": 0.34
+          }
+        ]
+      },
+      "theme": "market-town",
+      "layers": [
+        {
+          "name": "hawker",
+          "voice": "blip",
+          "pattern": "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ [7 9] ~ ~ ~",
+          "octave": 5,
+          "gain": 0.025,
+          "params": {
+            "duty": 0.25,
+            "decay": 0.08,
+            "bend": 3,
+            "reverb": 0.3
+          }
+        }
+      ]
+    },
+    {
+      "_note": "THEME PIN — sacred ground. Also drops one enormous bell on top.",
+      "name": "Sanctum",
+      "when": {
+        "category": "sacred",
+        "min": 0.14,
+        "full": 0.3
+      },
+      "theme": "temple",
+      "layers": [
+        {
+          "name": "great-bell",
+          "voice": "bell",
+          "pattern": "0 ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~",
+          "octave": 4,
+          "gain": 0.05,
+          "params": {
+            "decay": 8,
+            "ratio": 2.01,
+            "index": 4,
+            "reverb": 0.95,
+            "delay": 0.35
+          }
+        }
+      ]
+    },
+    {
+      "_note": "ANY — playing fields or a gym. A determined little march.",
+      "name": "Trial grounds",
+      "when": {
+        "any": [
+          {
+            "category": "sport",
+            "min": 0.11,
+            "full": 0.24
+          },
+          {
+            "tag": "gym",
+            "min": 0.06,
+            "full": 0.15
+          }
+        ]
+      },
+      "layers": [
+        {
+          "name": "march",
+          "voice": "pulse",
+          "pattern": "0 ~ 0 ~ 3 ~ 4 ~ 0 ~ 0 ~ 5 ~ 4 ~",
+          "octave": 3,
+          "gain": 0.055,
+          "dur": 1.2,
+          "params": {
+            "duty": 0.25,
+            "cutoff": [
+              2800,
+              5200,
+              "b"
+            ],
+            "resonance": 1.3
+          }
+        },
+        {
+          "name": "war-drum",
+          "voice": "kick",
+          "pattern": "x ~ x ~ x ~ x ~",
+          "gain": 0.2,
+          "params": {
+            "tone": 130
+          }
+        }
+      ]
+    },
+    {
+      "_note": "CATEGORY — a tavern. Low, warm, a lute in the corner.",
+      "name": "Tavern",
+      "when": {
+        "category": "nightlife",
+        "min": 0.09,
+        "full": 0.22
+      },
+      "layers": [
+        {
+          "name": "lute",
+          "voice": "pluck",
+          "pattern": "0 ~ 2 ~ [4 2] ~ 0 ~ ~ ~ 5 ~ 4 ~ 2 ~",
+          "octave": 2,
+          "gain": 0.07,
+          "params": {
+            "decay": 1.1,
+            "bright": 0.5,
+            "pan": 0.25,
+            "delay": 0.2
+          }
+        },
+        {
+          "name": "stamp",
+          "voice": "brush",
+          "pattern": "~ ~ x ~ ~ ~ x ~",
+          "gain": 0.05,
+          "params": {
+            "decay": 0.18,
+            "swirl": true,
+            "reverb": 0.3
+          }
+        }
+      ]
+    },
+    {
+      "_note": "CATEGORY — a schoolyard. Light, high, a little mischievous.",
+      "name": "Schoolyard",
+      "when": {
+        "category": "education",
+        "min": 0.09,
+        "full": 0.2
+      },
+      "layers": [
+        {
+          "name": "chime",
+          "voice": "blip",
+          "pattern": "7 ~ 9 ~ ~ 7 ~ ~ ~ 4 ~ ~ ~ ~ ~ ~",
+          "octave": 5,
+          "gain": 0.022,
+          "params": {
+            "duty": 0.5,
+            "decay": 0.1,
+            "reverb": 0.5,
+            "delay": 0.35
+          }
+        }
+      ]
+    }
+  ]
+}

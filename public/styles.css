@@ -621,6 +621,8 @@ input[type="search"] {
 
 .pack-row .mini { flex: 1; text-align: center; }
 
+.example-row { display: flex; margin-top: 7px; }
+
 /* -------------------------------------------------------------- tag editor */
 
 .tag-row {

@@ -108,6 +108,11 @@
       <button type="button" id="pasteToggle" class="mini">Paste</button>
       <input type="file" id="importFile" accept="application/json,.json,text/plain" hidden>
     </div>
+    <div class="example-row">
+      <select id="examplePacks" aria-label="Load an example pack">
+        <option value="" disabled selected>Load an example…</option>
+      </select>
+    </div>
     <div class="paste-row" id="pasteRow" hidden>
       <label class="sr-only" for="pasteArea">Paste pack JSON</label>
       <textarea id="pasteArea" rows="4" spellcheck="false"

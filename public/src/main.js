@@ -81,6 +81,7 @@ class App {
       onExportPack: () => this.exportPack(),
       onImportPack: (file) => this.importPack(file),
       onPastePack: (text) => this.importPackText(text),
+      onExamplePack: (file, name) => this.importExample(file, name),
       onTagEdit: (type, dim, value) => this.editTag(type, dim, value),
       onTagReset: (type) => this.resetTag(type),
     });
@@ -118,6 +119,7 @@ class App {
     this.engine.setVolume(Number(this.ui.el.volume.value) / 100);
 
     this.loadConfig();
+    this.loadExampleList();
 
     setInterval(() => this.replan(), REPLAN_MS);
     setInterval(() => {
@@ -332,8 +334,40 @@ class App {
     try {
       this.applyPack(sanitise(JSON.parse(trimmed)));
       this.ui.hidePaste();
+      return true;
     } catch (err) {
       this.ui.setPackHint(`That is not a valid pack: ${err.message}`);
+      return false;
+    }
+  }
+
+  /** The bundled example packs (public/packs/), listed in the Anywhere panel. */
+  async loadExampleList() {
+    try {
+      const res = await fetch('/packs/index.json');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const list = await res.json();
+      this.ui.setExamplePacks((Array.isArray(list) ? list : []).filter((p) =>
+        typeof p?.file === 'string' && /^[\w-]+\.json$/.test(p.file) &&
+        typeof p.name === 'string'));
+    } catch (err) {
+      console.warn('[packs] no example list:', err.message);
+    }
+  }
+
+  /** One-tap import of a bundled example — same path as a pasted pack. */
+  async importExample(file, name) {
+    try {
+      const res = await fetch('/packs/' + file);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      const before = this.pack.locations.length;
+      if (!this.importPackText(text)) return;
+      const added = this.pack.locations.length - before;
+      this.ui.setPackHint(
+        `Imported ${name} \u2014 ${added} place${added === 1 ? '' : 's'} added under Anywhere.`);
+    } catch (err) {
+      this.ui.setPackHint(`Could not load ${name}: ${err.message}`);
     }
   }
 

@@ -12,7 +12,7 @@
  *      rather than going silent.
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL = `shell-${VERSION}`;
 const PLACES = `places-${VERSION}`;
 
@@ -48,6 +48,10 @@ const SHELL_FILES = [
   '/src/themes/fantasy.js',
   '/src/themes/noir.js',
   '/src/themes/presets/overworld.js',
+  '/packs/index.json',
+  '/packs/landmarks.json',
+  '/packs/ocarina.json',
+  '/packs/cues-example.json',
 ];
 
 self.addEventListener('install', (event) => {

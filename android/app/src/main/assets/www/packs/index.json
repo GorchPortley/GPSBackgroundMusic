@@ -1,0 +1,5 @@
+[
+  { "file": "landmarks.json", "name": "World landmarks", "blurb": "Ten famous places, six themes" },
+  { "file": "ocarina.json", "name": "Ocarina adventure", "blurb": "Seven places, three themes that hand over by region" },
+  { "file": "cues-example.json", "name": "Cues example", "blurb": "The three ways to bind a loop to a place" }
+]
