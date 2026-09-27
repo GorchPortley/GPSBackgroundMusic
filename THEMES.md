@@ -113,7 +113,52 @@ pad and a bass in a quiet lane to a full arrangement on a busy junction.
 | `droneCutoff`, `airCutoff`, `airQ` | | Tone of those beds |
 | `fx` | | `reverbMix`, `reverbSeconds`, `delayMix`, `delayFeedback`, `delayTone` |
 | `form` | `{ breathEvery: 4 }` | Breath: every `breathEvery` phrases (four bars each), the last bar drops the percussion layers and any layer with `breath: true`, and the pad rings on. A whole number; `0` turns it off. At 120 bpm with the default that is one bar of air every 32 s |
+| `form.sections` | none | Song form: one letter `A`–`D` per four-bar phrase, cycling, up to 8 — e.g. `"AABA"`. Phrase *n* plays letter `sections[n % length]`, so a section only ever changes at a phrase seam. Leave it out and every phrase is `A` and nothing changes. See [Sections](#sections) |
+| `form.A` … `form.D` | none | What a section changes: `{ progression, degreeShift, density }`, all optional. See [Sections](#sections) |
 | `layers` | — | Required, at least one |
+
+### Sections
+
+A theme can have a song form: phrases lettered `A`–`D` that come round in a
+fixed order, so a tune has somewhere to go and come back from.
+
+```js
+form: {
+  sections: 'AABA',                       // one letter per four-bar phrase, cycling
+  B: { progression: [3, 3, 0, 4] },       // the bridge moves to IV and turns back through V
+},
+layers: [
+  { name: 'lead',   voice: 'pulse', pattern: '0 ~ 2 4 …', sections: 'A' },   // the tune: A only
+  { name: 'bridge', voice: 'pulse', generate: { … },      sections: 'B' },   // a new line in B
+  { name: 'bass',   voice: 'bass',  pattern: '0 4 0 4 0 4 0 4' },            // every section
+]
+```
+
+A letter's entry (`form.B` here) may change three things, each optional:
+
+| Field | Notes |
+|---|---|
+| `progression` | Scale degrees, 1–16 whole numbers (−14…14), played instead of the scene's progression. It starts from its first chord at the start of every phrase of that section, one chord per `barsPerChord` bars — so with four chords and `barsPerChord: 2`, only the first two are heard |
+| `degreeShift` | A whole number −7…7 added to every chord of whatever progression is playing in that section (`3` moves I–V–vi–IV up to IV–I–ii–vii) |
+| `density` | −1…1 added to the scene's density for that section's layer `level`s (and a generated melody's numbers), so `0.3` lets busier layers in for the section and `−0.3` thins it out |
+
+A layer's `sections` (e.g. `"B"` or `"AB"`) limits it to those sections; without
+it a layer plays in all of them. Without `form.sections` every phrase counts as
+`A`, so a layer that says `"B"` is never heard (the validator warns).
+
+How it fits with the rest: breath still falls on its own schedule (every
+`breathEvery` phrases, whatever the section); a `fill` still replaces the loop
+in the last bar before a change lands, for the layers playing in that section;
+chords in `pad`/`strings` are voice-led across the section change like any other
+chord change. Section changes need no waiting for a boundary — they *are* on
+the boundary — so a key or theme change still lands exactly as before. Cue
+layers follow the section's chords too, so they stay in harmony.
+
+With `sections`, a `generate` layer composes one line per letter and bar of the
+phrase instead of per absolute bar: the A phrases repeat the A line, B has its
+own, and it comes back the same each time round (in a new place, a new set of
+lines). The notes still follow the chord under them, so a line repeats exactly
+wherever its chords repeat.
 
 ### Progressions
 
@@ -156,6 +201,7 @@ dark modes so an overworld tune never turns funereal.
 | `params` | Extra voice parameters (below), each a constant or `[min,max,dim]` |
 | `humanise` | Timing scatter in seconds. Default `0.004`; `0` for machine-tight |
 | `breath` | Optional `true`/`false`: does this layer rest in the breath bar (see `form`)? Defaults to `true` for percussion voices, `false` for the rest. If the breath bar is also a `fill` bar, a layer with a `fill` plays its fill |
+| `sections` | Optional: the sections this layer plays in, 1–4 letters `A`–`D` (`"B"`, `"AB"`). Absent = every section. See [Sections](#sections) |
 
 ### Generated melodies
 
@@ -181,7 +227,9 @@ note steps or leaps from the last, bounces back off the ends of `range`, and
 on beats 1 and 3 (steps 0 and 8) moves to the nearest note of the current
 chord. The first step of a new chord always plays. The walk is seeded by the
 place, the bar number and the layer's `name`, so two generated layers in one
-theme play different lines. A bar is fixed once it starts: the mood gliding
+theme play different lines (with [sections](#sections), by the section
+letter and the bar within the phrase instead, so each letter's line comes
+back). A bar is fixed once it starts: the mood gliding
 underneath changes the next bar, not the one you are hearing.
 
 `fill` and `breath` work as on any layer: a `fill` pattern replaces the
@@ -309,7 +357,13 @@ phrase }`. `io` is the bundle every voice function takes.
 To breathe like a spec theme, return `form: { breathEvery: 4 }` from `plan()`
 and skip your drums when `breathing(plan, pos)` (from `themes/util.js`) is
 true — `wanderer.js` does. Cue layers on top of your theme follow the same
-`plan.form`; without one they never rest.
+`plan.form`; without one they never rest. Likewise `section(plan, pos)` (also
+from `util.js`) returns the current section letter when `plan.form.sections`
+is set (`null` otherwise); a code theme may use it however it likes, and cue
+layers with `sections` read it from your plan. If your `plan.form` also
+carries letter tweaks (`B: { progression, degreeShift }`), cue layers follow
+those chords, so only return them if your own `step` plays the same ones.
+The built-in code themes have no sections.
 
 ### Three rules the engine relies on
 

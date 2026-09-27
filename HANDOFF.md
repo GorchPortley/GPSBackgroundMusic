@@ -111,7 +111,7 @@ browser; Node built-ins on the server. ~9,600 lines total.
 | `public/src/themes/match.js` | Cue conditions → strength | `matchStrength`, `validateCondition`, `describeCondition` |
 | `public/src/themes/{wanderer,fantasy,scifi,videogame,noir}.js` | Code themes | one theme object each |
 | `public/src/themes/presets/overworld.js` | Built-in spec theme | `overworld` |
-| `public/src/themes/util.js` | Helpers for theme authors | `gate`, `quantise`, `rnd`, `swingOffset`, `leadChord` (per-part voice-leading state; resets on theme/tonic/mode change) |
+| `public/src/themes/util.js` | Helpers for theme authors | `gate`, `quantise`, `rnd`, `swingOffset`, `breathing` (C3.7), `section` (P2: the phrase's section letter), `leadChord` (per-part voice-leading state; resets on theme/tonic/mode change) |
 | `public/sw.js` | Service worker: app shell + place-lookup cache | — |
 | `server/index.js` | Static files + `/api/config`, `/api/places`, `/api/geocode` | — |
 | `server/places.js` | Google Places (New) `searchNearby`; type aliasing | `getNearbyPlaces`, `providerName` |
@@ -166,7 +166,10 @@ so is `cuePans` (spatial cues, C3.5), glided on per-cue panners by `_applyCuePan
 `root`, `scale`, `progression`, `barsPerChord`) wait for a phrase boundary —
 see `isDiscreteChange` at the bottom of engine.js. `form` (C3.7 breath) is a
 theme constant: it only changes with `themeId`, so it rides that discrete
-change and needs no entry of its own; `step` reads it from the sounding plan. **If you add a plan field,
+change and needs no entry of its own; `step` reads it from the sounding plan.
+Its section form (P2, `form.sections`) is a function of `pos.phrase`, so a
+section change is on a phrase seam by construction and is not a plan field
+either. **If you add a plan field,
 decide which bucket it is in and wire it accordingly.** Cue membership is
 deliberately *not* discrete (the comment in `replan` explains why: it would
 hold the cue until the boundary and then drop it in at full volume).
@@ -813,8 +816,18 @@ example pack (C0.3). Dismiss stores a flag in `localStorage`.
   `t`. Cheap once C3.10 exists; fold it in there if wanted.
 - **Sample-based instruments** (SoundFont/WAV): breaks §3.1 and adds
   megabytes. Only with the user's explicit say-so.
-- **Section form (A A B A)**: C3.7 gets most of the anti-monotony value for
-  1/10 of the work. Revisit after C3.8.
+- ~~**Section form (A A B A)**~~ — **done (P2).** `spec.form.sections`
+  (`"AABA"`, 1–8 letters A–D, one per phrase, cycling) and per-letter tweaks
+  `form.B = { progression?, degreeShift?, density? }`; a layer's `sections`
+  (`"B"`, `"AB"`) limits where it plays. The letter is `util.section(plan,
+  pos)` = `sections[pos.phrase % length]`, so it only changes on a phrase seam
+  and the engine is untouched (no new discrete field: `form` still rides
+  `themeId`). A section `progression` restarts at each of its phrases
+  (`spec.js` `harmonyAt`); `density` resolves per-section levels in `plan()`.
+  With sections, `generate` is keyed on (letter, bar in phrase), so each
+  letter's line repeats. Overworld plays A A B A (bridge on IV with a
+  generated line). Themes without `sections` produce identical events to
+  before. THEMES.md §2 "Sections".
 - ~~**Voice-leading chords**~~ — **done (P1).** `theory.voiceLead(prev, next,
   { anchor, range })` picks the inversion × octave of `next` with the least
   movement, lowest note within ±`range` of a fixed anchor (plus the un-led

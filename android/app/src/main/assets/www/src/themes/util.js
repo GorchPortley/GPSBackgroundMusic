@@ -57,6 +57,20 @@ export function breathing(plan, pos) {
   return pos.phrase % every === every - 1 && pos.barInPhrase === 3;
 }
 
+/**
+ * Section form (P2): which section this phrase is in. With
+ * `plan.form.sections = 'AABA'`, phrase n plays letter `sections[n % 4]` —
+ * a pure function of the engine's phrase count, so it only ever changes at a
+ * phrase seam and needs nothing from the engine's commit logic. `null` when
+ * the theme has no `sections` (every phrase is then "A" for a layer's
+ * `sections` gate).
+ */
+export function section(plan, pos) {
+  const s = plan.form?.sections;
+  if (typeof s !== 'string' || !s.length) return null;
+  return s[pos.phrase % s.length];
+}
+
 /** Linear interpolation, for readability at call sites. */
 export function lerp(a, b, t) {
   return a + (b - a) * t;

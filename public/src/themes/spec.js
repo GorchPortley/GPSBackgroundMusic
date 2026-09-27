@@ -31,7 +31,7 @@ import {
 } from '../audio/voices.js';
 import { parsePattern, queryPattern, readValue } from './pattern.js';
 import { matchStrength, validateCondition } from './match.js';
-import { breathing, gate, leadChord, quantise, rnd } from './util.js';
+import { breathing, gate, leadChord, quantise, rnd, section } from './util.js';
 import { markovBar } from './melody.js';
 
 const STEPS_PER_BAR = 16;
@@ -176,6 +176,11 @@ export function validateSpec(spec) {
     if (layer.breath !== undefined && typeof layer.breath !== 'boolean') {
       errors.push(`${where}: "breath" must be true or false.`);
     }
+    // Optional: the sections (P2, `form.sections`) this layer plays in.
+    if (layer.sections !== undefined && !isSections(layer.sections, MAX_LAYER_SECTIONS)) {
+      errors.push(`${where}: "sections" must be 1–${MAX_LAYER_SECTIONS} of the letters ` +
+        `A–D, e.g. "B" or "AB".`);
+    }
     const kind = VOICES[layer.voice]?.kind;
     if (kind === 'unpitched' && layer.chord) {
       warnings.push(`${where}: "chord" has no effect on a percussion voice.`);
@@ -223,9 +228,23 @@ export function validateSpec(spec) {
   if (spec.form !== undefined) {
     if (!spec.form || typeof spec.form !== 'object' || Array.isArray(spec.form)) {
       errors.push('"form" must be an object, e.g. { "breathEvery": 4 }.');
-    } else if (spec.form.breathEvery !== undefined &&
-        !(Number.isInteger(spec.form.breathEvery) && spec.form.breathEvery >= 0)) {
-      errors.push('"form.breathEvery" must be a whole number, 0 or more (0 = never).');
+    } else {
+      if (spec.form.breathEvery !== undefined &&
+          !(Number.isInteger(spec.form.breathEvery) && spec.form.breathEvery >= 0)) {
+        errors.push('"form.breathEvery" must be a whole number, 0 or more (0 = never).');
+      }
+      const form = checkForm(spec.form);
+      errors.push(...form.errors);
+      warnings.push(...form.warnings);
+    }
+  }
+  // A layer that only plays in sections the theme never reaches is silent.
+  const reached = isSections(spec.form?.sections) ? spec.form.sections : 'A';
+  for (const layer of layers) {
+    if (isSections(layer?.sections, MAX_LAYER_SECTIONS) &&
+        ![...layer.sections].some((l) => reached.includes(l))) {
+      warnings.push(`layer "${layer.name || layer.voice}": "sections" is "${layer.sections}" ` +
+        `but the theme only plays "${reached}", so it is never heard.`);
     }
   }
   // How much of the place's own ambience (birds, water, traffic, murmur) this
@@ -266,6 +285,110 @@ function numError(v, label) {
     return null;
   }
   return `${label} must be a number or [min, max, dimension].`;
+}
+
+/* ------------------------------------------------------------ section form */
+
+/** Section letters (P2). A form is at most 8 phrases; a layer names up to 4. */
+const SECTION_LETTERS = ['A', 'B', 'C', 'D'];
+const MAX_FORM_SECTIONS = 8;
+const MAX_LAYER_SECTIONS = 4;
+const SECTION_KEYS = ['progression', 'degreeShift', 'density'];
+const MAX_SECTION_CHORDS = 16;
+
+/** Is this a string of 1..max section letters, e.g. "AABA"? */
+function isSections(v, max = MAX_FORM_SECTIONS) {
+  return typeof v === 'string' && v.length >= 1 && v.length <= max && /^[A-D]+$/.test(v);
+}
+
+/**
+ * Check the section half of `form` (P2): `sections` and the per-letter
+ * tweaks `form.A`…`form.D` = `{ progression?, degreeShift?, density? }`.
+ */
+function checkForm(form) {
+  const errors = [];
+  const warnings = [];
+  if (form.sections !== undefined && !isSections(form.sections)) {
+    errors.push(`"form.sections" must be 1–${MAX_FORM_SECTIONS} of the letters A–D, ` +
+      'one per four-bar phrase, e.g. "AABA".');
+  }
+  for (const letter of SECTION_LETTERS) {
+    const part = form[letter];
+    if (part === undefined) continue;
+    const label = `"form.${letter}"`;
+    if (!part || typeof part !== 'object' || Array.isArray(part)) {
+      errors.push(`${label} must be an object, e.g. { "progression": [3, 3, 0, 4] }.`);
+      continue;
+    }
+    if (part.progression !== undefined &&
+        !(Array.isArray(part.progression) && part.progression.length >= 1 &&
+          part.progression.length <= MAX_SECTION_CHORDS &&
+          part.progression.every((d) => Number.isInteger(d) && Math.abs(d) <= 14))) {
+      errors.push(`${label}.progression must be 1–${MAX_SECTION_CHORDS} whole scale degrees ` +
+        '(−14…14), e.g. [3, 3, 0, 4].');
+    }
+    if (part.degreeShift !== undefined &&
+        !(Number.isInteger(part.degreeShift) && Math.abs(part.degreeShift) <= 7)) {
+      errors.push(`${label}.degreeShift must be a whole number of scale degrees, −7…7.`);
+    }
+    if (part.density !== undefined &&
+        !(typeof part.density === 'number' && part.density >= -1 && part.density <= 1)) {
+      errors.push(`${label}.density must be a number from −1 to 1 (added to the scene's density).`);
+    }
+    for (const k of Object.keys(part)) {
+      if (!SECTION_KEYS.includes(k)) warnings.push(`${label}: unknown field "${k}" is ignored.`);
+    }
+    if (!(isSections(form.sections) ? form.sections : 'A').includes(letter)) {
+      warnings.push(`${label} is never used: "form.sections" has no "${letter}".`);
+    }
+  }
+  return { errors, warnings };
+}
+
+/**
+ * The resolved per-section tweaks for a plan, or `{}` when the theme has no
+ * sections. Only letters that change something get an entry; `density`
+ * becomes the levels (and mood, for `generate`) that section plays with.
+ */
+function resolveSections(form, layers, mood, scene) {
+  const out = {};
+  if (!isSections(form?.sections)) return out;
+  out.sections = form.sections;
+  for (const letter of SECTION_LETTERS) {
+    const p = form[letter];
+    if (!p || typeof p !== 'object' || !form.sections.includes(letter)) continue;
+    const part = {};
+    if (Array.isArray(p.progression)) part.progression = p.progression;
+    if (p.degreeShift) part.degreeShift = p.degreeShift;
+    if (p.density) {
+      const shifted = { ...mood, d: Math.min(1, Math.max(0, (mood.d ?? 0.5) + p.density)) };
+      part.mood = shifted;
+      part.levels = resolveLevels(layers, shifted, scene);
+    }
+    if (Object.keys(part).length) out[letter] = part;
+  }
+  return out;
+}
+
+/**
+ * The chord under this step. Without a section tweak this is the plan's own
+ * progression, indexed by the absolute bar (as it always was). A section with
+ * its own `progression` starts it from its first chord at the phrase seam, so
+ * the swap lines up with the phrase and nothing clashes mid-phrase;
+ * `degreeShift` moves whichever progression is playing by that many degrees.
+ * `chordChange` is also true on the first bar of a new section.
+ */
+function harmonyAt(plan, pos, letter) {
+  const part = letter ? plan.form[letter] : null;
+  const bpc = plan.barsPerChord;
+  const own = part?.progression;
+  const prog = own || plan.progression;
+  const bars = own ? pos.barInPhrase : pos.bar;
+  let degree = prog[Math.floor(bars / bpc) % prog.length];
+  if (part?.degreeShift) degree += part.degreeShift;
+  const seam = letter !== null && pos.barInPhrase === 0 &&
+    letter !== plan.form.sections[(pos.phrase + plan.form.sections.length - 1) % plan.form.sections.length];
+  return { degree, chordChange: bars % bpc === 0 || seam, part };
 }
 
 const GENERATE_KEYS = ['kind', 'density', 'range', 'leap', 'rest', 'contour'];
@@ -338,23 +461,33 @@ export function compileLayers(specLayers) {
  * for the whole bar even though the plan — and with it the mood that the
  * `generate` numbers follow — is replaced every replan tick. A new bar, or a
  * new place's seed arriving with a committed change, draws a fresh bar.
+ *
+ * `at` (from stepLayers) carries the chord under the bar and, when the theme
+ * has sections (P2), the section letter and bar-in-phrase that key the walk
+ * instead of the absolute bar. Without it: the plan's own progression.
  */
-export function generatedEvents(layer, plan, bar) {
+export function generatedEvents(layer, plan, bar, at = null) {
+  const letter = at?.letter ?? null;
   const c = layer.genCache;
-  if (c && c.bar === bar && c.seed === plan.seed) return c.events;
+  if (c && c.bar === bar && c.seed === plan.seed && c.letter === letter) return c.events;
 
   const g = layer.generate;
-  const mood = plan.mood || {};
+  const mood = at?.mood || plan.mood || {};
   const unit = (v, fallback) => Math.min(1, Math.max(0, num(v, mood, fallback)));
   const [lo, hi] = Array.isArray(g.range) ? g.range : [0, 9];
   const chordIndex = Math.floor(bar / plan.barsPerChord) % plan.progression.length;
+  const name = layer.name || layer.voice;
 
+  // Section form (P2): with `form.sections` the walk is keyed on the section
+  // letter and the bar within the phrase instead of the absolute bar, so each
+  // letter has its own motif and it comes back every time that letter does
+  // (the A phrases of AABA match, B differs). Without sections: as before.
   const events = markovBar({
     seed: plan.seed >>> 0,
-    bar,
-    name: layer.name || layer.voice,
-    chordDegree: plan.progression[chordIndex],
-    chordChange: bar % plan.barsPerChord === 0,
+    bar: letter ? at.barInPhrase : bar,
+    name: letter ? `${name}/${letter}` : name,
+    chordDegree: at ? at.degree : plan.progression[chordIndex],
+    chordChange: at ? at.chordChange : bar % plan.barsPerChord === 0,
     scaleLength: (SCALES[plan.scale] || SCALES.aeolian).length,
     density: unit(g.density, 0.45),
     leap: unit(g.leap, 0.2),
@@ -363,7 +496,7 @@ export function generatedEvents(layer, plan, bar) {
     lo: num(lo, mood, 0),
     hi: num(hi, mood, 9),
   });
-  layer.genCache = { bar, seed: plan.seed, events };
+  layer.genCache = { bar, seed: plan.seed, letter, events };
   return events;
 }
 
@@ -401,25 +534,37 @@ export function resolveLevels(layers, mood, scene) {
  * replaces the generated bar exactly as it replaces a loop, and breath
  * follows the same rule — being pitched, they play through the breath bar
  * unless they say `breath: true`.
+ *
+ * Section form (P2, `plan.form.sections`): the phrase number picks a letter;
+ * a layer with `sections` sits out the others, and the letter's
+ * `progression` / `degreeShift` (see harmonyAt) set the chord — for cue
+ * layers too, so they stay in the theme's harmony. Breath and fills are
+ * unchanged by it; voice leading carries across the swap because the led
+ * state lives on the layer, not the section.
  */
 export function stepLayers(io, plan, pos, layers, levels) {
   const { stepInBar, bar, time, stepDur, barDur, stepsToCommit } = pos;
   const finalBar = stepsToCommit !== undefined && stepsToCommit <= STEPS_PER_BAR;
   const breath = breathing(plan, pos);
-  const chordIndex = Math.floor(bar / plan.barsPerChord) % plan.progression.length;
-  const degree = plan.progression[chordIndex];
+  const letter = section(plan, pos);
+  const { degree, chordChange, part } = harmonyAt(plan, pos, letter);
+  const at = { letter, degree, chordChange, barInPhrase: pos.barInPhrase, mood: part?.mood };
 
   for (const layer of layers) {
     const key = layer.name || layer.voice;
     const gainLevel = levels[key] ?? 1;
     if (gainLevel <= 0.02) continue;
+    // Section form (P2): a layer with `sections` plays only in those; with no
+    // form every phrase counts as "A". Checked before the fill, so a layer
+    // that is out of its section stays out even in a fill bar.
+    if (typeof layer.sections === 'string' && !layer.sections.includes(letter || 'A')) continue;
 
     // One cycle is one bar. Loops advance with the bar count, so a
     // <> alternation moves on each time round.
     const filling = finalBar && layer.fillNode;
     if (breath && !filling && (layer.breath ?? layer.def.kind === 'unpitched')) continue;
     const node = filling ? layer.fillNode : layer.node;
-    const events = node ? queryPattern(node, bar) : generatedEvents(layer, plan, bar);
+    const events = node ? queryPattern(node, bar) : generatedEvents(layer, plan, bar, at);
     for (const ev of events) {
       const exact = ev.begin * STEPS_PER_BAR;
       if (Math.floor(exact + 1e-9) !== stepInBar) continue;
@@ -494,7 +639,12 @@ export function themeFromSpec(spec) {
         barsPerChord: Math.max(1, Math.round(num(spec.barsPerChord, mood, 1))),
         // Part of the theme, so it only changes with themeId; step reads it
         // live from the sounding plan. Default: breathe every 4th phrase.
-        form: { breathEvery: spec.form?.breathEvery ?? 4 },
+        // With `form.sections` (P2) it also carries the section letters and
+        // each letter's resolved tweaks; a section is a function of the phrase
+        // number, so it changes only at a phrase seam and is not a plan
+        // field the engine has to hold back.
+        form: { breathEvery: spec.form?.breathEvery ?? 4,
+          ...resolveSections(spec.form, layers, mood, scene) },
 
         // The engine drives these two itself.
         layers: {
@@ -525,7 +675,9 @@ export function themeFromSpec(spec) {
     },
 
     step(io, plan, pos) {
-      stepLayers(io, plan, pos, layers, plan.levels || {});
+      // A section with a `density` tweak plays with its own layer levels.
+      const letter = section(plan, pos);
+      stepLayers(io, plan, pos, layers, (letter && plan.form[letter]?.levels) || plan.levels || {});
     },
   };
 }
