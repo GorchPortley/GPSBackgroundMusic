@@ -69,6 +69,7 @@ export class UI {
       radar: $('radar'),
       sceneName: $('sceneName'),
       sceneMeta: $('sceneMeta'),
+      sceneWhy: $('sceneWhy'),
       statusLine: $('statusLine'),
       moodBars: $('moodBars'),
       tagList: $('tagList'),
@@ -649,9 +650,16 @@ export class UI {
     this.radius = radius || this.radius;
   }
 
-  setScene({ name, meta, mood, tags, placeCount, band, cues }) {
+  setScene({ name, meta, why, mood, tags, placeCount, band, cues }) {
     if (name) this.el.sceneName.textContent = name;
     if (meta) this.el.sceneMeta.textContent = meta;
+    // "Why this music" (C4.1). textContent: place names can come from packs.
+    // Written only when it changes, since setScene runs every replan tick.
+    if (why !== undefined && why !== this._why) {
+      this._why = why;
+      this.el.sceneWhy.textContent = why;
+      this.el.sceneWhy.hidden = !why;
+    }
     if (band && band !== this._band) {
       this._band = band;
       this._renderBand();

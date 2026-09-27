@@ -6,7 +6,9 @@
  * seeding the composer, and a human-readable name for the HUD.
  */
 
-import { canonicalType, DIMS, IGNORED_TYPES, NEUTRAL, profileFor } from './tags.js';
+import {
+  canonicalType, countedPlaces, DIMS, IGNORED_TYPES, NEUTRAL, placeLabel, profileFor,
+} from './tags.js';
 import { weatherFactors } from './weather.js';
 
 /** A place's own type counts more than the extra types Google attaches. */
@@ -72,6 +74,9 @@ export function analyzePlaces(places, radius) {
   const catWeights = new Map();
   const unknown = new Set();
   const contributions = [];
+  // Distinct places per canonical type, for the "why this music" line (C4.1):
+  // a place tagged both `italian_restaurant` and `restaurant` is one restaurant.
+  const placesByType = {};
   let total = 0;
 
   // Nearest first, so the closest instance of a type is the one that gets full
@@ -84,6 +89,7 @@ export function analyzePlaces(places, radius) {
     if (geoW <= 0) continue;
 
     const seen = new Set();
+    const counted = new Set();
     for (const type of place.types || []) {
       if (seen.has(type) || IGNORED_TYPES.has(type)) continue;
       seen.add(type);
@@ -97,6 +103,10 @@ export function analyzePlaces(places, radius) {
       // Count repeats by canonical type, so `italian_restaurant` and
       // `pizza_restaurant` are two restaurants rather than one of each.
       const canonical = canonicalType(type) || type;
+      if (!counted.has(canonical)) {
+        counted.add(canonical);
+        placesByType[canonical] = (placesByType[canonical] || 0) + 1;
+      }
       const occurrence = (typeCounts.get(canonical) || 0) + 1;
       typeCounts.set(canonical, occurrence);
 
@@ -139,6 +149,7 @@ export function analyzePlaces(places, radius) {
     totalWeight: total,
     urbanness: total / (total + URBAN_HALF_WEIGHT),
     placeCount: (places || []).length,
+    placesByType,
     unknownTypes: [...unknown],
   };
 }
@@ -345,6 +356,106 @@ export function sceneKey(mood, categories) {
   const q = DIMS.map((d) => Math.round(mood[d] * 4)).join('');
   const cats = (categories || []).slice(0, 2).map((c) => c.cat).join('-');
   return `${cats}:${q}`;
+}
+
+/* ------------------------------------------------------ why this music */
+
+/**
+ * The places doing most to push the mood away from neutral (C4.1): tags
+ * grouped by canonical type, ranked by `weight × |profile − NEUTRAL|₁`. A
+ * car park near a nightclub has weight but no opinion, so it ranks below it.
+ *
+ * @returns {Array<{type, count, weight, deviation, score}>} best first
+ */
+export function topContributors(analysis, n = 3) {
+  const groups = new Map();
+  for (const tag of analysis?.tags || []) {
+    const profile = profileFor(tag.type);
+    if (!profile) continue;
+    const type = canonicalType(tag.type) || tag.type;
+    const g = groups.get(type) || { type, weight: 0, profile };
+    g.weight += tag.weight;
+    groups.set(type, g);
+  }
+  return [...groups.values()]
+    .map(({ type, weight, profile }) => {
+      let deviation = 0;
+      for (const d of DIMS) deviation += Math.abs((profile[d] ?? NEUTRAL[d]) - NEUTRAL[d]);
+      return {
+        type,
+        count: analysis.placesByType?.[type] || 1,
+        weight,
+        deviation,
+        score: weight * deviation,
+      };
+    })
+    .filter((c) => c.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, n);
+}
+
+/** One word for each end of each mood dimension. */
+const MOOD_WORDS = {
+  e: ['calm', 'lively'],
+  b: ['dark', 'bright'],
+  d: ['sparse', 'busy'],
+  t: ['settled', 'tense'],
+  w: ['cool', 'warm'],
+  s: ['close', 'spacious'],
+};
+/** How far from 0.5 a dimension must sit before it is worth a word. */
+const MOOD_WORD_MIN = 0.1;
+
+/** "Busy and bright": the one or two dimensions furthest from neutral. */
+export function describeMood(mood) {
+  const words = DIMS
+    .map((d) => ({ d, dev: (mood?.[d] ?? NEUTRAL[d]) - NEUTRAL[d] }))
+    .filter(({ dev }) => Math.abs(dev) >= MOOD_WORD_MIN)
+    .sort((a, b) => Math.abs(b.dev) - Math.abs(a.dev))
+    .slice(0, 2)
+    .map(({ d, dev }) => MOOD_WORDS[d][dev > 0 ? 1 : 0]);
+  const text = words.length ? words.join(' and ') : 'balanced';
+  return text[0].toUpperCase() + text.slice(1);
+}
+
+/**
+ * The weather's share, named only when it moved the mood noticeably (a shift
+ * of ~0.03 or more in contextualise's terms). Empty with weather off.
+ */
+function weatherWords(weather) {
+  const { rain01, cloud01, wind01 } = weatherFactors(weather);
+  const words = [];
+  if (rain01 >= 0.3) words.push('rain');
+  else if (cloud01 >= 0.7) words.push('overcast');
+  if (wind01 >= 0.4) words.push('wind');
+  return words;
+}
+
+/**
+ * "Busy and bright because: 3 cafés, a bar, a station". Plain text — ui.js
+ * writes it with textContent. Falls back to naming the open ground when no
+ * tagged place is near; empty until there is an analysis at all.
+ *
+ * @param {object} mood      the mood being aimed at (after contextualise)
+ * @param {object} analysis  result of analyzePlaces
+ * @param {object|null} weather weather.js's current reading, or null when off
+ */
+export function whyLine(mood, analysis, weather = null) {
+  if (!analysis || !mood) return '';
+  // Types that share an everyday name ("station" for train and transit
+  // stations) are one entry, so ask for a few spare and merge before cutting.
+  const byLabel = new Map();
+  for (const c of topContributors(analysis, 8)) {
+    const label = placeLabel(c.type);
+    const seen = byLabel.get(label);
+    if (seen) seen.count += c.count;
+    else if (byLabel.size < 3) byLabel.set(label, { type: c.type, count: c.count });
+  }
+  const extra = weatherWords(weather);
+  const tail = extra.length ? ` · ${extra.join(', ')}` : '';
+  if (!byLabel.size) return `${describeMood(mood)}: nothing tagged nearby${tail}`;
+  const places = [...byLabel.values()].map((c) => countedPlaces(c.type, c.count)).join(', ');
+  return `${describeMood(mood)} because: ${places}${tail}`;
 }
 
 /* ------------------------------------------------------------------ utils */

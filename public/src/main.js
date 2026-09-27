@@ -13,7 +13,7 @@
 import { AudioEngine } from './audio/engine.js';
 import { GeoTracker, DEFAULT_ORIGIN, haversine } from './geo.js';
 import {
-  analyzePlaces, contextualise, lerpMood, sceneKey, sceneName,
+  analyzePlaces, contextualise, lerpMood, sceneKey, sceneName, whyLine,
 } from './scene.js';
 import {
   categoryFor, clearTagOverride, getTagOverrides, setTagOverride, setTagOverrides,
@@ -920,6 +920,9 @@ class App {
     this.ui.setScene({
       name,
       meta: `${plan.meta.key} ${plan.meta.mode} · ${plan.meta.progression} · ${Math.round(plan.bpm)} bpm`,
+      // The target mood, not the gliding one, so the words settle at once.
+      why: whyLine(this.targetMood, this.analysis,
+        this.ui.weatherOn() ? this.weather.current : null),
       cues: this.activeCues
         .filter((c) => c.strength > 0.05)
         .map((c) => ({ name: c.name, strength: c.strength })),
