@@ -426,6 +426,8 @@ or `engine.level()` from the console.
 Your coordinates go to two places: the local server, and from there to whichever
 place provider is configured — OpenStreetMap's Overpass by default, Google
 Places if you supplied a key. Place-name search additionally queries OSM's
-Nominatim. Nothing is stored, logged to disk, or sent anywhere else, and no
-audio is recorded. Saved places and tag edits live in your browser's local
+Nominatim. When the Weather toggle is on (it is off by default), your
+coordinates rounded to two decimal places (about 1 km) also go directly to
+Open-Meteo, at most every 15 minutes or few kilometres. Nothing is stored,
+logged to disk, or sent anywhere else, and no audio is recorded. Saved places and tag edits live in your browser's local
 storage and are only shared if you export a pack yourself.

@@ -94,6 +94,7 @@ browser; Node built-ins on the server. ~9,600 lines total.
 | `public/src/provider.js` | Picks Google-via-server / Overpass-direct / mock | `fetchPlaces`, `geocode`, `usingServer` |
 | `public/src/tags.js` | Place type → mood profile; categories; user overrides | `TAG_PROFILES`, `profileFor`, `categoryFor`, `setTagOverride` |
 | `public/src/osm-tags.js` | OSM tag soup → canonical type | `osmType` |
+| `public/src/weather.js` | Open-Meteo current weather (C3.10): guarded fetch, 15-min cache, 0..1 factors | `WeatherSource`, `fetchWeather`, `weatherFactors`, `weatherUrl` |
 | `public/src/scene.js` | Places → mood. Emphasis, peak-pull, contrast, motion | `analyzePlaces`, `contextualise`, `sceneKey`, `lerpMood` |
 | `public/src/scenecontext.js` | The `scene` object cues and code themes query | `buildScene` → `{tagWeight(), categoryWeight(), nearest(), named()}` |
 | `public/src/store.js` | Pack load/save/sanitise. **The security boundary** | `sanitise`, `loadPack`, `savePack`, `readPackFile` |

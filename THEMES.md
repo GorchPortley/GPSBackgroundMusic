@@ -521,7 +521,7 @@ sampled.
 | water | category `water` | noise through a slowly wandering 500 Hz band |
 | traffic | `transit` + `service`, or a built-up scene (urbanness > 0.6) | low rumble, with a car passing every 6–20 s |
 | murmur | `food` + `nightlife` + `retail` | six drifting voice-band noises: a distant crowd |
-| rain | weather (not yet wired) | high hiss with sparse drips |
+| rain | weather, when the Weather toggle is on (rain mm/h ÷ 4) | high hiss with sparse drips |
 
 Each bed's level is `category share × 1.6` (capped at 1) × the **Ambience**
 slider (next to volume, default 60 %) × the theme's `ambience`. Levels glide

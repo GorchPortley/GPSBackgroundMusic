@@ -12,7 +12,7 @@
  *      rather than going silent.
  */
 
-const VERSION = 'v17';
+const VERSION = 'v18';
 const SHELL = `shell-${VERSION}`;
 const PLACES = `places-${VERSION}`;
 
@@ -33,6 +33,7 @@ const SHELL_FILES = [
   '/src/store.js',
   '/src/provider.js',
   '/src/osm-tags.js',
+  '/src/weather.js',
   '/src/audio/engine.js',
   '/src/audio/voices.js',
   '/src/audio/ambience.js',
@@ -94,8 +95,10 @@ self.addEventListener('fetch', (event) => {
   // Never cache config or geocoding — both are cheap and want to be current.
   if (url.origin === self.location.origin && url.pathname.startsWith('/api/')) return;
 
-  // Cross-origin (Overpass, Nominatim) is left alone; those have their own
-  // rate limits and caching them here would confuse the fallback logic.
+  // Cross-origin (Overpass, Nominatim, Open-Meteo weather) is left alone and
+  // never cached: those have their own rate limits, caching them here would
+  // confuse the fallback logic, and weather.js keeps its own 15-minute cache
+  // (a stale forecast served as current would be wrong, not just old).
   if (url.origin !== self.location.origin) return;
 
   event.respondWith(shellStrategy(request));

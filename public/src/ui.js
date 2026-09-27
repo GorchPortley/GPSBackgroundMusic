@@ -10,6 +10,7 @@ import {
   hasOverride, prettyTag, profileFor,
 } from './tags.js';
 import { SIM_SPEEDS } from './geo.js';
+import { describeWeather } from './weather.js';
 import { THEMES } from './themes/index.js';
 import { LOOP_PRESETS } from './themes/presets/loops.js';
 
@@ -30,6 +31,7 @@ export class UI {
       volume: $('volume'),
       ambience: $('ambience'),
       paceLock: $('paceLock'),
+      weatherOn: $('weatherOn'),
       simRow: $('simRow'),
       simSpeed: $('simSpeed'),
       placeSearch: $('placeSearch'),
@@ -250,6 +252,34 @@ export class UI {
     return !!this.el.paceLock?.checked;
   }
 
+  /**
+   * "Use local weather" (C3.10). Off by default and not persisted, like pace
+   * lock: turning it on is what sends a (rounded) position to Open-Meteo, so
+   * it is a choice made each launch.
+   */
+  weatherOn() {
+    return !!this.el.weatherOn?.checked;
+  }
+
+  /** The reading in use (weather.js shape), or null. Shown on the band badge. */
+  setWeather(w) {
+    this._weather = w || null;
+    this._renderBand();
+  }
+
+  /** Band label plus, when weather is on and known, one glyph for conditions. */
+  _renderBand() {
+    const badge = this.el.bandBadge;
+    if (!badge) return;
+    const wx = describeWeather(this._weather);
+    const band = this._band || badge.dataset.band || '\u2026';
+    badge.dataset.band = band;
+    badge.textContent = wx ? `${band} ${wx.glyph}` : band;
+    badge.title = wx ? `Time of day shading \u00b7 ${wx.text}` : 'Time of day shading';
+    if (wx) badge.dataset.weather = wx.text;
+    else delete badge.dataset.weather;
+  }
+
   _bind() {
     this.el.power.addEventListener('click', () => this.h.onPower?.());
 
@@ -261,6 +291,9 @@ export class UI {
     });
     this.el.paceLock?.addEventListener('change', () => {
       this.h.onPaceLock?.(this.paceLock());
+    });
+    this.el.weatherOn?.addEventListener('change', () => {
+      this.h.onWeather?.(this.weatherOn());
     });
 
     for (const btn of document.querySelectorAll('.segmented [data-mode]')) {
@@ -619,7 +652,10 @@ export class UI {
   setScene({ name, meta, mood, tags, placeCount, band, cues }) {
     if (name) this.el.sceneName.textContent = name;
     if (meta) this.el.sceneMeta.textContent = meta;
-    if (band) this.el.bandBadge.textContent = band;
+    if (band && band !== this._band) {
+      this._band = band;
+      this._renderBand();
+    }
 
     if (mood) {
       for (const dim of DIMS) {

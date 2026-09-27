@@ -122,8 +122,8 @@ export class Ambience {
       water: new Water(this, rng),
       traffic: new Traffic(this, rng),
       murmur: new Murmur(this, rng),
-      // Built but undriven: main.js never sets a rain level. C3.10 (weather)
-      // will drive it from the forecast.
+      // Driven by the weather (C3.10): main.js sets it from rain mm/h, and
+      // leaves it at 0 while the weather toggle is off.
       rain: new Rain(this, rng),
     };
     for (const g of Object.values(this.gens)) g.start(this.ctx, this.bus);
@@ -435,8 +435,8 @@ class Murmur extends Generator {
 
 /**
  * Rain. White noise → highpass 1.5 kHz with a gentle level modulation, plus
- * sparse drips (very short sine pings). Nothing drives this yet — C3.10
- * (weather) will; until then its level stays 0 and it schedules no drips.
+ * sparse drips (very short sine pings). Driven by the weather (C3.10):
+ * main.js sets its level from rain mm/h; at level 0 it schedules no drips.
  */
 class Rain extends Generator {
   constructor(host, rng) { super(host, rng, MAX.rain); }

@@ -31,6 +31,7 @@ import {
   customSpecs, DEFAULT_THEME_ID, getTheme, registerSpecs,
 } from './themes/index.js';
 import { UI } from './ui.js';
+import { WeatherSource, weatherFactors } from './weather.js';
 
 const REPLAN_MS = 1500;
 /** Fraction of a step the smoothed mood takes toward the target each replan. */
@@ -119,6 +120,12 @@ class App {
 
     this.engine = new AudioEngine();
 
+    // Weather (C3.10), off by default. The source never blocks anything: it
+    // fetches in the background and replan reads `weather.current` each tick.
+    this.weather = new WeatherSource({
+      onChange: (w) => this.ui?.setWeather(w),
+    });
+
     this.ui = new UI({
       onPower: () => this.togglePower(),
       onVolume: () => this.applyVolume(),
@@ -127,6 +134,7 @@ class App {
       onPaceLock: (on) => this.ui.setStatus(on
         ? 'Tempo follows your pace while you walk.'
         : 'Tempo back to the theme\u2019s own.'),
+      onWeather: (on) => this.setWeather(on),
       onMode: (mode) => this.setMode(mode),
       onSimSpeed: (mps) => this.geo.setSimSpeed(mps),
       onTheme: (id) => this.setTheme(id),
@@ -723,6 +731,24 @@ class App {
     this.replan(true);
   }
 
+  /* ---------------------------------------------------------------- weather */
+
+  /**
+   * The weather toggle (C3.10). On: ask now if we know where we are (replan
+   * keeps it fresh after that). Off: drop the reading and discard anything in
+   * flight, so no request is made and the mood and rain bed return to normal
+   * on the next replan (both glide).
+   */
+  setWeather(on) {
+    if (on) {
+      this.weather.refresh(this.position);
+      this.ui.setStatus('Weather on \u2014 your position, rounded to about 1 km, goes to Open-Meteo.');
+    } else {
+      this.weather.disable();
+      this.ui.setStatus('Weather off.');
+    }
+  }
+
   /* --------------------------------------------------------------- position */
 
   onPosition(pos) {
@@ -831,6 +857,7 @@ class App {
     const { mood, band } = contextualise(this.analysis, {
       speed: this.position?.speed ?? 0,
       hour: new Date().getHours(),
+      weather: this.ui.weatherOn() ? this.weather.current : null,
     });
     this.targetMood = mood;
     this.band = band;
@@ -844,6 +871,8 @@ class App {
    * until you are somewhere meaningfully different.
    */
   replan(force = false) {
+    // Fire-and-forget: at most one request per 15 min or per few km moved.
+    if (this.ui.weatherOn()) this.weather.refresh(this.position);
     if (!this.analysis) return;
 
     this.updateTargetMood();
@@ -916,7 +945,8 @@ class App {
    * The place, literally: one level per ambience bed from what is around you.
    * `plan.ambience` (0..1, default 1) is the theme's say in it and is
    * continuous — it only scales levels that glide anyway, so it never waits
-   * for a phrase. Rain is not set here: C3.10 (weather) will drive it.
+   * for a phrase. Rain comes from the weather (C3.10), not the map:
+   * `rain01` (mm/h ÷ 4, see weather.js) — zero with weather off.
    */
   updateAmbience(plan) {
     const w = (...cats) => clamp01(
@@ -930,6 +960,7 @@ class App {
       traffic: Math.max(w('transit', 'service'),
         clamp01((urban - AMBIENCE_URBAN) / (1 - AMBIENCE_URBAN))),
       murmur: w('food', 'nightlife', 'retail'),
+      rain: this.ui.weatherOn() ? weatherFactors(this.weather.current).rain01 : 0,
     };
     this.themeAmbience = typeof plan.ambience === 'number' && Number.isFinite(plan.ambience)
       ? clamp01(plan.ambience) : 1;

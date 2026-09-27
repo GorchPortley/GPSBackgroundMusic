@@ -7,6 +7,7 @@
  */
 
 import { canonicalType, DIMS, IGNORED_TYPES, NEUTRAL, profileFor } from './tags.js';
+import { weatherFactors } from './weather.js';
 
 /** A place's own type counts more than the extra types Google attaches. */
 const PRIMARY_TYPE_WEIGHT = 1.0;
@@ -217,10 +218,12 @@ export function timeBand(hour) {
 
 /**
  * Fold in the things that are true about *you* rather than about the map:
- * how built-up it is here, how fast you are travelling, and the hour.
+ * how built-up it is here, how fast you are travelling, the hour, and (when
+ * the weather toggle is on) the weather.
  *
  * @param {object} analysis result of analyzePlaces
- * @param {{speed?: number, hour?: number}} ctx speed in m/s
+ * @param {{speed?: number, hour?: number, weather?: object|null}} ctx speed in
+ *   m/s; weather is weather.js's `{ rainMmH, windKmh, cloudPct, isDay }`
  */
 export function contextualise(analysis, ctx = {}) {
   const mood = { ...analysis.mood };
@@ -247,6 +250,15 @@ export function contextualise(analysis, ctx = {}) {
 
   const band = timeBand(Number.isFinite(ctx.hour) ? ctx.hour : new Date().getHours());
   for (const [dim, delta] of Object.entries(band.mod)) mood[dim] += delta;
+
+  // Weather (C3.10): rain darkens and cools, overcast dims a little, wind
+  // opens the space. Factors are 0..1 (weather.js `weatherFactors`: rain ÷ 4
+  // mm/h, cloud ÷ 100 %, wind ÷ 40 km/h), and all zero with weather off, so
+  // this is a no-op then. Applied before the final clamp, like everything else.
+  const { rain01, cloud01, wind01 } = weatherFactors(ctx.weather);
+  mood.b -= 0.10 * rain01 + 0.05 * cloud01;
+  mood.w -= 0.05 * rain01;
+  mood.s += 0.08 * wind01;
 
   for (const d of DIMS) mood[d] = clamp01(mood[d]);
   return { mood, motion, band };
