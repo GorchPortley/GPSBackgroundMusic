@@ -20,7 +20,7 @@ import {
 import {
   bassVoice, bellVoice, hat, kick, padVoice, pluckVoice, rim, shaker,
 } from '../audio/voices.js';
-import { gate, quantise, rnd } from './util.js';
+import { breathing, gate, quantise, rnd } from './util.js';
 
 /** Arpeggio shapes in 16th-note positions, sparse to busy. */
 const PLUCK_PATTERNS = [
@@ -75,6 +75,8 @@ export const wanderer = {
       progression: progression.degrees,
       barsPerChord,
       layers,
+      // Every 4th phrase the last bar drops the percussion (C3.7).
+      form: { breathEvery: 4 },
 
       timbre: {
         // Warm places get triangles; cold ones get the harder sawtooth edge.
@@ -231,8 +233,8 @@ export const wanderer = {
       }
     }
 
-    /* ---- percussion ---- */
-    if (layers.perc > 0.04) {
+    /* ---- percussion (rests in the breath bar) ---- */
+    if (layers.perc > 0.04 && !breathing(plan, pos)) {
       const p = layers.perc;
 
       if (perc.kick && (stepInBar === 0 || (stepInBar === 10 && perc.push))) {

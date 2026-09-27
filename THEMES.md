@@ -111,6 +111,7 @@ pad and a bass in a quiet lane to a full arrangement on a busy junction.
 | `drone`, `air` | 0.04, 0.012 | The engine's two continuous beds |
 | `droneCutoff`, `airCutoff`, `airQ` | | Tone of those beds |
 | `fx` | | `reverbMix`, `reverbSeconds`, `delayMix`, `delayFeedback`, `delayTone` |
+| `form` | `{ breathEvery: 4 }` | Breath: every `breathEvery` phrases (four bars each), the last bar drops the percussion layers and any layer with `breath: true`, and the pad rings on. A whole number; `0` turns it off. At 120 bpm with the default that is one bar of air every 32 s |
 | `layers` | — | Required, at least one |
 
 ### Progressions
@@ -151,6 +152,7 @@ dark modes so an overworld tune never turns funereal.
 | `chordSize` | For `pad`/`strings`: 3 for triads, 4 for sevenths |
 | `params` | Extra voice parameters (below), each a constant or `[min,max,dim]` |
 | `humanise` | Timing scatter in seconds. Default `0.004`; `0` for machine-tight |
+| `breath` | Optional `true`/`false`: does this layer rest in the breath bar (see `form`)? Defaults to `true` for percussion voices, `false` for the rest. If the breath bar is also a `fill` bar, a layer with a `fill` plays its fill |
 
 ---
 
@@ -263,6 +265,11 @@ export const myTheme = {
 
 `pos` gives you `{ step, time, stepDur, barDur, stepInBar, bar, barInPhrase,
 phrase }`. `io` is the bundle every voice function takes.
+
+To breathe like a spec theme, return `form: { breathEvery: 4 }` from `plan()`
+and skip your drums when `breathing(plan, pos)` (from `themes/util.js`) is
+true — `wanderer.js` does. Cue layers on top of your theme follow the same
+`plan.form`; without one they never rest.
 
 ### Three rules the engine relies on
 

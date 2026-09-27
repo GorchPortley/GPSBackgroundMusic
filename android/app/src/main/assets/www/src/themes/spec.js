@@ -31,7 +31,7 @@ import {
 } from '../audio/voices.js';
 import { parsePattern, queryPattern, readValue } from './pattern.js';
 import { matchStrength, validateCondition } from './match.js';
-import { gate, quantise, rnd } from './util.js';
+import { breathing, gate, quantise, rnd } from './util.js';
 
 const STEPS_PER_BAR = 16;
 
@@ -148,6 +148,11 @@ export function validateSpec(spec) {
         errors.push(...checkPattern(layer.fill, `${where}: fill`));
       }
     }
+    // Optional: does this layer drop out in the breath bar? Default: only
+    // percussion does.
+    if (layer.breath !== undefined && typeof layer.breath !== 'boolean') {
+      errors.push(`${where}: "breath" must be true or false.`);
+    }
     const kind = VOICES[layer.voice]?.kind;
     if (kind === 'unpitched' && layer.chord) {
       warnings.push(`${where}: "chord" has no effect on a percussion voice.`);
@@ -181,6 +186,15 @@ export function validateSpec(spec) {
   }
   for (const mode of spec.modes || []) {
     if (typeof mode !== 'string') errors.push(`Bad mode: ${JSON.stringify(mode)}.`);
+  }
+  // Form: every `breathEvery` phrases the last bar drops the drums (C3.7).
+  if (spec.form !== undefined) {
+    if (!spec.form || typeof spec.form !== 'object' || Array.isArray(spec.form)) {
+      errors.push('"form" must be an object, e.g. { "breathEvery": 4 }.');
+    } else if (spec.form.breathEvery !== undefined &&
+        !(Number.isInteger(spec.form.breathEvery) && spec.form.breathEvery >= 0)) {
+      errors.push('"form.breathEvery" must be a whole number, 0 or more (0 = never).');
+    }
   }
   // How much of the place's own ambience (birds, water, traffic, murmur) this
   // theme lets through: a plain number, 0 = none at all.
@@ -242,10 +256,18 @@ export function resolveLevels(layers, mood, scene) {
  * `pos.stepsToCommit` (engine.js) is set only while a change is waiting for
  * its seam; in the final bar before it lands, a layer with a `fill` plays
  * that pattern instead of its loop.
+ *
+ * Breath (C3.7, `plan.form.breathEvery`): in the last bar of every n-th
+ * phrase, percussion layers and layers with `breath: true` rest (a layer can
+ * opt out with `breath: false`). When that bar is also a fill bar, the fill
+ * wins for the layers that have one — the handover matters more than the
+ * air — and the other eligible layers still rest. Cue layers go through here
+ * too, so they breathe with whatever theme they sit on.
  */
 export function stepLayers(io, plan, pos, layers, levels) {
   const { stepInBar, bar, time, stepDur, barDur, stepsToCommit } = pos;
   const finalBar = stepsToCommit !== undefined && stepsToCommit <= STEPS_PER_BAR;
+  const breath = breathing(plan, pos);
   const chordIndex = Math.floor(bar / plan.barsPerChord) % plan.progression.length;
   const degree = plan.progression[chordIndex];
 
@@ -256,7 +278,9 @@ export function stepLayers(io, plan, pos, layers, levels) {
 
     // One cycle is one bar. Loops advance with the bar count, so a
     // <> alternation moves on each time round.
-    const node = finalBar && layer.fillNode ? layer.fillNode : layer.node;
+    const filling = finalBar && layer.fillNode;
+    if (breath && !filling && (layer.breath ?? layer.def.kind === 'unpitched')) continue;
+    const node = filling ? layer.fillNode : layer.node;
     for (const ev of queryPattern(node, bar)) {
       const exact = ev.begin * STEPS_PER_BAR;
       if (Math.floor(exact + 1e-9) !== stepInBar) continue;
@@ -326,6 +350,9 @@ export function themeFromSpec(spec) {
         scale,
         progression: progression.degrees,
         barsPerChord: Math.max(1, Math.round(num(spec.barsPerChord, mood, 1))),
+        // Part of the theme, so it only changes with themeId; step reads it
+        // live from the sounding plan. Default: breathe every 4th phrase.
+        form: { breathEvery: spec.form?.breathEvery ?? 4 },
 
         // The engine drives these two itself.
         layers: {

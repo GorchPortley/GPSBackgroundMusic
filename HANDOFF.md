@@ -162,7 +162,9 @@ via `setTargetAtTime` in `_applyContinuous`; `ambience` is continuous too,
 folded into the ambience levels by main.js (`updateAmbience` → `setAmbience`);
 so is `cuePans` (spatial cues, C3.5), glided on per-cue panners by `_applyCuePans`. Discrete fields (`themeId`,
 `root`, `scale`, `progression`, `barsPerChord`) wait for a phrase boundary —
-see `isDiscreteChange` at the bottom of engine.js. **If you add a plan field,
+see `isDiscreteChange` at the bottom of engine.js. `form` (C3.7 breath) is a
+theme constant: it only changes with `themeId`, so it rides that discrete
+change and needs no entry of its own; `step` reads it from the sounding plan. **If you add a plan field,
 decide which bucket it is in and wire it accordingly.** Cue membership is
 deliberately *not* discrete (the comment in `replan` explains why: it would
 hold the cue until the boundary and then drop it in at full volume).

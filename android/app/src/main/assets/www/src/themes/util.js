@@ -43,6 +43,18 @@ export function swingOffset(stepInBar, stepDur, amount) {
   return stepInBar % 4 === 2 ? stepDur * amount : 0;
 }
 
+/**
+ * Breath (C3.7): is this the bar of air? With `plan.form.breathEvery = n`
+ * (n >= 1), the last bar of every n-th four-bar phrase is one — drums drop
+ * out and the pad rings. 0 or absent never breathes. Needs the engine's
+ * `pos.phrase` and `pos.barInPhrase`.
+ */
+export function breathing(plan, pos) {
+  const every = plan.form?.breathEvery;
+  if (!Number.isInteger(every) || every <= 0) return false;
+  return pos.phrase % every === every - 1 && pos.barInPhrase === 3;
+}
+
 /** Linear interpolation, for readability at call sites. */
 export function lerp(a, b, t) {
   return a + (b - a) * t;
