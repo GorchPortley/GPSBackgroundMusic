@@ -152,6 +152,7 @@ dark modes so an overworld tune never turns funereal.
 | `level` | When it is audible (above) |
 | `dur` | Note length **in steps**, for sustained voices. Defaults to the pattern slot |
 | `chordSize` | For `pad`/`strings`: 3 for triads, 4 for sevenths |
+| `voiceLead` | For `pad`/`strings`: `true` (default) or `false`. On, each chord is played in the inversion nearest the one before it, so the voices move by steps instead of the whole chord jumping; its lowest note stays between a fourth below and a fifth above the layer's tonic (`octave`), so the part never drifts. `false` plays every chord in root position exactly as stacked. Starts over from root position on a new theme, key or mode. Chords written as note names (`c4`) are never moved |
 | `params` | Extra voice parameters (below), each a constant or `[min,max,dim]` |
 | `humanise` | Timing scatter in seconds. Default `0.004`; `0` for machine-tight |
 | `breath` | Optional `true`/`false`: does this layer rest in the breath bar (see `form`)? Defaults to `true` for percussion voices, `false` for the rest. If the breath bar is also a `fill` bar, a layer with a `fill` plays its fill |
@@ -275,6 +276,11 @@ within the step rather than stacking, so `"0*32"` articulates properly.
 
 All are synthesised at runtime; there are no samples. Every voice also accepts
 `reverb` and `delay` as send amounts (`0..1`).
+
+`pad` and `strings` are voice-led: a new chord takes the inversion nearest
+the previous one (see `voiceLead` in the layer fields; `false` turns it off
+for a layer). A code theme gets the same with `leadChord(state, plan, bar,
+notes, tonic)` from `themes/util.js` — `wanderer` and `fantasy` use it.
 
 ---
 

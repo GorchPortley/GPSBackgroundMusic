@@ -8,6 +8,8 @@
  * (seed, bar, step, salt).
  */
 
+import { voiceLead } from '../audio/theory.js';
+
 /** 0 below `from`, ramping linearly to 1 over `width`. */
 export function gate(value, from, width) {
   return Math.min(1, Math.max(0, (value - from) / width));
@@ -58,4 +60,41 @@ export function breathing(plan, pos) {
 /** Linear interpolation, for readability at call sites. */
 export function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+/** A chordal part that has rested this many bars (past its chord length) starts fresh. */
+const LEAD_STALE_BARS = 8;
+
+/**
+ * Voice-lead a chordal part: return the inversion of `notes` (its natural
+ * voicing, e.g. from chordNotes) nearest to what this part played last, via
+ * theory.voiceLead. `state` is a plain object the caller owns — one per
+ * part: spec.js keeps it on the compiled layer, a code theme in its module.
+ *
+ * `tonic` is the MIDI note the part is written from (the `root + octave * 12`
+ * passed to chordNotes). The lowest note is kept within a fourth below to a
+ * fifth above it (`tonic - 5 .. tonic + 7`) — the span of the root-position
+ * chords I to V — so the part keeps its register however long it plays, and
+ * a chord that would sit high (vi, vii, or a degree that wraps past the
+ * octave in a pentatonic mode) is voiced down into it instead.
+ *
+ * It starts again from the natural voicing when the theme, tonic or mode
+ * changes (the discrete commits in engine.js), when the transport restarts,
+ * or when the part has been silent for a while — so a theme or key always
+ * opens on the chord it was written with, and the sequence from there is a
+ * pure function of the plan.
+ */
+export function leadChord(state, plan, bar, notes, tonic = notes[0]) {
+  const fresh = state.themeId !== plan.themeId || state.root !== plan.root ||
+    state.scale !== plan.scale || !(bar >= state.bar) ||
+    bar - state.bar > LEAD_STALE_BARS + (plan.barsPerChord || 1);
+  const out = fresh || !state.prev
+    ? notes
+    : voiceLead(state.prev, notes, { anchor: tonic + 1, range: 6 });
+  state.themeId = plan.themeId;
+  state.root = plan.root;
+  state.scale = plan.scale;
+  state.bar = bar;
+  state.prev = out;
+  return out;
 }

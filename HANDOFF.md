@@ -102,7 +102,7 @@ browser; Node built-ins on the server. ~9,600 lines total.
 | `public/src/audio/voices.js` | 18 synthesised instruments | `padVoice`, `bassVoice`, `pluckVoice`, `kick`, … |
 | `public/src/audio/ambience.js` | Ambience beds under the music (birds, water, traffic, murmur, rain), on `engine.ambienceGain` | `Ambience`, `AMBIENCE_KINDS` |
 | `public/src/audio/worklets/ks.js` | Karplus–Strong string processor (AudioWorklet, loaded in `engine.start()`) | registers `karplus-strong` |
-| `public/src/audio/theory.js` | Scales, modes, progressions, seeded RNG | `scaleNote`, `chordNotes`, `pickMode`, `mulberry32`, `hashString` |
+| `public/src/audio/theory.js` | Scales, modes, progressions, seeded RNG, voice leading | `scaleNote`, `chordNotes`, `pickMode`, `mulberry32`, `hashString`, `voiceLead` (nearest inversion in a fixed register window), `voiceDistance` |
 | `public/src/themes/index.js` | Theme registry, custom spec registration | `getTheme`, `allThemes`, `registerSpecs`, `customSpecs`, `removeCustom` |
 | `public/src/themes/spec.js` | Declarative theme format → theme | `VOICES`, `validateSpec`, `themeFromSpec`, `stepLayers`, `generatedEvents` |
 | `public/src/themes/pattern.js` | Mini-notation parser and query | `parsePattern`, `queryPattern`, `readValue` |
@@ -111,7 +111,7 @@ browser; Node built-ins on the server. ~9,600 lines total.
 | `public/src/themes/match.js` | Cue conditions → strength | `matchStrength`, `validateCondition`, `describeCondition` |
 | `public/src/themes/{wanderer,fantasy,scifi,videogame,noir}.js` | Code themes | one theme object each |
 | `public/src/themes/presets/overworld.js` | Built-in spec theme | `overworld` |
-| `public/src/themes/util.js` | Helpers for theme authors | `gate`, `quantise`, `rnd`, `swingOffset` |
+| `public/src/themes/util.js` | Helpers for theme authors | `gate`, `quantise`, `rnd`, `swingOffset`, `leadChord` (per-part voice-leading state; resets on theme/tonic/mode change) |
 | `public/sw.js` | Service worker: app shell + place-lookup cache | — |
 | `server/index.js` | Static files + `/api/config`, `/api/places`, `/api/geocode` | — |
 | `server/places.js` | Google Places (New) `searchNearby`; type aliasing | `getNearbyPlaces`, `providerName` |
@@ -815,9 +815,14 @@ example pack (C0.3). Dismiss stores a flag in `localStorage`.
   megabytes. Only with the user's explicit say-so.
 - **Section form (A A B A)**: C3.7 gets most of the anti-monotony value for
   1/10 of the work. Revisit after C3.8.
-- **Voice-leading chords**: `theory.voice()` only spreads; a nearest-inversion
-  `voiceLead(prev, next)` would smooth pad changes. Small; do it if pads sound
-  jumpy after C3.2.
+- ~~**Voice-leading chords**~~ — **done (P1).** `theory.voiceLead(prev, next,
+  { anchor, range })` picks the inversion × octave of `next` with the least
+  movement, lowest note within ±`range` of a fixed anchor (plus the un-led
+  voicing, so leading never moves more than not leading); `util.leadChord`
+  keeps the per-part state (on the compiled layer in spec.js; a module object
+  in wanderer/fantasy) and resets on theme, tonic or mode change. Spec layers:
+  `voiceLead`, default on for `pad`/`strings` (THEMES.md §2). Overworld pad
+  movement per change in the page: 18.2 → 4.4 semitones.
 - **iOS**: PWA only; Safari suspends Web Audio when locked and there is no
   foreground-service equivalent. Not solvable without a native shell.
 - **Transit realtime (GTFS-RT) chimes**: fun, but per-city feeds and keys.

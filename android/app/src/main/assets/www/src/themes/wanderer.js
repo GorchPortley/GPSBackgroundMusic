@@ -20,7 +20,11 @@ import {
 import {
   bassVoice, bellVoice, hat, kick, padVoice, pluckVoice, rim, shaker,
 } from '../audio/voices.js';
-import { breathing, gate, quantise, rnd } from './util.js';
+import { breathing, gate, leadChord, quantise, rnd } from './util.js';
+
+// Voice-leading memory for the pad (util.leadChord). Only this theme touches
+// it, and it starts over on any theme, tonic or mode change.
+const padLead = {};
 
 /** Arpeggio shapes in 16th-note positions, sparse to busy. */
 const PLUCK_PATTERNS = [
@@ -138,7 +142,9 @@ export const wanderer = {
 
     /* ---- pad: the chord bed, retriggered on each chord change ---- */
     if (chordStart && layers.pad > 0.02) {
-      const notes = chordNotes(plan.root + 24, scale, degree, timbre.chordSize);
+      // Nearest inversion to the last pad chord, so the bed moves by steps.
+      const notes = leadChord(padLead, plan, bar,
+        chordNotes(plan.root + 24, scale, degree, timbre.chordSize), plan.root + 24);
       padVoice(io, {
         notes,
         time,

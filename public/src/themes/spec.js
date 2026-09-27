@@ -31,7 +31,7 @@ import {
 } from '../audio/voices.js';
 import { parsePattern, queryPattern, readValue } from './pattern.js';
 import { matchStrength, validateCondition } from './match.js';
-import { breathing, gate, quantise, rnd } from './util.js';
+import { breathing, gate, leadChord, quantise, rnd } from './util.js';
 import { markovBar } from './melody.js';
 
 const STEPS_PER_BAR = 16;
@@ -180,6 +180,15 @@ export function validateSpec(spec) {
     if (kind === 'unpitched' && layer.chord) {
       warnings.push(`${where}: "chord" has no effect on a percussion voice.`);
     }
+    // Voice leading: on by default for chordal voices; `false` keeps every
+    // chord in its written (root-position) voicing.
+    if (layer.voiceLead !== undefined) {
+      if (typeof layer.voiceLead !== 'boolean') {
+        errors.push(`${where}: "voiceLead" must be true or false.`);
+      } else if (kind && kind !== 'chordal') {
+        warnings.push(`${where}: "voiceLead" only affects chordal voices (pad, strings).`);
+      }
+    }
     // Layer levels are merged into plan.layers alongside the engine's own two
     // continuous beds, so these names would silently fight with them.
     if (layer.name === 'drone' || layer.name === 'air') {
@@ -315,6 +324,9 @@ export function compileLayers(specLayers) {
       fillNode: fill && fill.type !== 'error' ? fill : null,
       def: VOICES[layer.voice],
       genCache: null,
+      // Voice-leading memory for a chordal layer (util.leadChord): per
+      // compiled layer, so two themes or two cues never share it.
+      leadState: {},
     };
   }).filter((layer) => layer.def && (layer.node ? layer.node.type !== 'error' : layer.generate));
 }
@@ -419,6 +431,7 @@ export function stepLayers(io, plan, pos, layers, levels) {
 
       play(io, plan, layer, parsed, degree, {
         time: time + offset + humanise(layer, plan, bar, stepInBar),
+        bar,
         stepDur,
         barDur,
         gainLevel,
@@ -567,9 +580,15 @@ function play(io, plan, layer, parsed, degree, ctx) {
 
   if (def.kind === 'chordal') {
     const size = Math.max(2, Math.round(num(layer.chordSize, plan.mood, 3)));
-    options.notes = parsed.kind === 'midi'
-      ? [midi, midi + 4, midi + 7].slice(0, size)
-      : chordNotes(plan.root + octave * 12, plan.scale, degree + (parsed.degree || 0), size);
+    if (parsed.kind === 'midi') {
+      // A note name is absolute: its chord stays exactly where it is written.
+      options.notes = [midi, midi + 4, midi + 7].slice(0, size);
+    } else {
+      const notes = chordNotes(plan.root + octave * 12, plan.scale, degree + (parsed.degree || 0), size);
+      options.notes = layer.voiceLead === false
+        ? notes
+        : leadChord(layer.leadState, plan, ctx.bar, notes, plan.root + octave * 12);
+    }
   } else {
     options.note = midi;
   }
