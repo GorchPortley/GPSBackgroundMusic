@@ -175,6 +175,25 @@ string, never code, which is what makes a theme safe to accept from a stranger.
 
 These nest: `"<[0 2] 4>*2 7"` is valid.
 
+### Euclidean rhythms
+
+`x(k,n)` spreads **k** hits as evenly as possible over **n** slots; a third
+number rotates the result left, as in Tidal. Two numbers give you most of the
+world's rhythms:
+
+```
+"x(3,8)"        x ~ ~ x ~ ~ x ~     tresillo
+"x(5,8)"        x ~ x x ~ x x ~     cinquillo
+"x(3,8,2)"      ~ x ~ ~ x ~ x ~     tresillo, rotated left by 2
+"0(3,8)"        0 ~ ~ 0 ~ ~ 0 ~     works on notes too
+"[x(3,8)]*2"    the same rhythm twice per bar
+```
+
+It binds to the term just before it, like `*n`, so `"<0 4>(3,8)"` and
+`"[0 2](3,8)"` work too. It is expanded when the pattern is parsed — nothing is
+evaluated. `n` is capped at 64; `k` of 0 is all rests and `k` ≥ `n` is every
+slot. Anything else in parentheses, such as `x(3)`, is reported as an error.
+
 ### Numbers are scale degrees, not pitches
 
 `0` is the root of the **current chord**, `2` the third above it, `4` the fifth,
