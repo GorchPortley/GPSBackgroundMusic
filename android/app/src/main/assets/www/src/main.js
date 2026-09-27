@@ -879,11 +879,16 @@ class App {
   }
 }
 
-/** Made in the cue editor, and shaped so the editor can open it again. */
+/**
+ * Made in the cue editor, and shaped so the editor can open it again. The
+ * editor only writes `when.near`; a cue whose condition says anything else
+ * (an `inside` polygon, say) is shown read-only, or saving would drop it.
+ */
 function isEditableCue(cue) {
   const near = cue?.when?.near;
   return cue?._ui === true && !!near &&
-    Number.isFinite(near.lat) && Number.isFinite(near.lng);
+    Number.isFinite(near.lat) && Number.isFinite(near.lng) &&
+    Object.keys(cue.when).every((k) => k === 'near');
 }
 
 /**

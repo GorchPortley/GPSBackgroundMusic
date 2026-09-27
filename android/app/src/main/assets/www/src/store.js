@@ -18,6 +18,8 @@ const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const MAX_THEMES = 40;
 const MAX_THEME_BYTES = 64 * 1024;
 const MAX_CUES = 100;
+const MAX_POLYGON_VERTICES = 64;   // same limit validateCondition enforces
+const MAX_CONDITION_DEPTH = 8;
 
 export function emptyPack() {
   return { version: PACK_VERSION, tagOverrides: {}, locations: [],
@@ -120,6 +122,9 @@ export function sanitise(input) {
         const { _ui, ...rest } = cue;
         cue = rest;
       }
+      if (cue.when && typeof cue.when === 'object') {
+        cue = { ...cue, when: cleanCondition(cue.when, 0) };
+      }
       let size = 0;
       try { size = JSON.stringify(cue).length; } catch { continue; }
       if (size > MAX_THEME_BYTES) continue;
@@ -128,6 +133,53 @@ export function sanitise(input) {
   }
 
   return pack;
+}
+
+/**
+ * Walk a cue condition (through `any` lists) and tidy every `inside` polygon.
+ * Only `inside` is rewritten; every other key passes through for
+ * validateCondition to judge.
+ *
+ * - The vertex list is cut to one more than the limit, so a huge polygon
+ *   cannot bloat storage but validateCondition still sees that it was too big
+ *   and reports it (rather than a silent truncation reshaping the fence).
+ * - Each vertex that parses as two finite numbers is clamped to lat ±90,
+ *   lng ±180; anything else becomes `null`, which validation rejects by index.
+ * - `edge` is clamped to 1..5000 m, or dropped (default 60 m) if not numeric.
+ */
+function cleanCondition(cond, depth) {
+  if (!cond || typeof cond !== 'object' || Array.isArray(cond)) return cond;
+  const out = { ...cond };
+  if (Array.isArray(cond.any)) {
+    out.any = depth >= MAX_CONDITION_DEPTH ? [] : cond.any.map((c) => cleanCondition(c, depth + 1));
+  }
+  if ('inside' in cond) {
+    const src = cond.inside;
+    if (!src || typeof src !== 'object' || Array.isArray(src) || !Array.isArray(src.polygon)) {
+      out.inside = {};
+    } else {
+      const clean = {
+        polygon: src.polygon.slice(0, MAX_POLYGON_VERTICES + 1).map((p) => {
+          if (!Array.isArray(p) || p.length !== 2) return null;
+          const lat = toNumber(p[0]);
+          const lng = toNumber(p[1]);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          return [Math.min(90, Math.max(-90, lat)), Math.min(180, Math.max(-180, lng))];
+        }),
+      };
+      const edge = toNumber(src.edge);
+      if (Number.isFinite(edge)) clean.edge = Math.min(5000, Math.max(1, edge));
+      out.inside = clean;
+    }
+  }
+  return out;
+}
+
+/** A number, or a non-blank numeric string; anything else is NaN. */
+function toNumber(v) {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string' && v.trim()) return Number(v);
+  return NaN;
 }
 
 /** Hand the browser a .json file to save. */

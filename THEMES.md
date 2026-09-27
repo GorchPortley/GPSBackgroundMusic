@@ -297,7 +297,7 @@ cue). What it saves is exactly the format below plus `"_ui": true`, which only
 tells the editor it may offer Edit and Delete; cues without it are shown as
 *from pack* and left alone.
 
-### Four ways to say where
+### Five ways to say where
 
 | Condition | Matches | Use for |
 |---|---|---|
@@ -305,8 +305,15 @@ tells the editor it may offer Edit and Delete; cues without it are shown as
 | `{ "category": "sport" }` | anything sporty | a broad family |
 | `{ "place": "Omega Music" }` | a place whose **name** contains that | a named business |
 | `{ "near": { "lat": …, "lng": …, "radius": 120 } }` | that **specific building** | *your* gym |
+| `{ "inside": { "polygon": [[lat, lng], …], "edge": 60 } }` | anywhere **inside that shape** | a campus, an odd-shaped park, a neighbourhood |
 
 `{ "any": [ … ] }` ORs a list. Several keys in one condition are ANDed.
+
+`inside` takes 3 to 64 `[lat, lng]` points in order around the shape (don't
+repeat the first at the end). It is full strength anywhere inside and fades
+to nothing `edge` metres outside the nearest side (default 60). There is no
+way to draw one in the app yet — write it in the pack's JSON; the cue list
+shows it as *from pack*.
 
 **Conditions return a strength, not a yes/no.** A gym half a street away brings
 its riff in quietly; standing outside brings it up full; walking away fades it
