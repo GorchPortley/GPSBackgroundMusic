@@ -53,6 +53,34 @@ const AMBIENCE_URBAN = 0.6;
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
+/**
+ * Pace lock (C3.9). Steps per minute per m/s of walking speed: 1.4 m/s is
+ * about 110 steps/min.
+ */
+const PACE_SPM_PER_MPS = 78;
+const PACE_MIN_SPM = 80;
+const PACE_MAX_SPM = 130;
+/** Below this (m/s) there are no footsteps worth following. */
+const PACE_MIN_SPEED = 0.6;
+/** How far the theme's tempo is pulled toward the cadence. */
+const PACE_PULL = 0.7;
+
+/**
+ * The tempo a theme should play at while you walk: your cadence, or half or
+ * double it — whichever is nearest the theme's own `bpm` — pulled 70 % of the
+ * way from that natural tempo. Always computed from the theme's bpm (never
+ * from last tick's result), so the same place and pace give the same tempo.
+ * The engine glides to it like any other bpm change.
+ */
+function paceLockedBpm(bpm, speed) {
+  const cadence = Math.min(PACE_MAX_SPM, Math.max(PACE_MIN_SPM, speed * PACE_SPM_PER_MPS));
+  let candidate = cadence;
+  for (const c of [cadence / 2, cadence * 2]) {
+    if (Math.abs(c - bpm) < Math.abs(candidate - bpm)) candidate = c;
+  }
+  return bpm + (candidate - bpm) * PACE_PULL;
+}
+
 class App {
   constructor() {
     this.radius = 350;
@@ -95,6 +123,10 @@ class App {
       onPower: () => this.togglePower(),
       onVolume: () => this.applyVolume(),
       onAmbience: () => this.applyAmbience(),
+      // Read by replan on its next tick (≤ 1.5 s); the engine glides the bpm.
+      onPaceLock: (on) => this.ui.setStatus(on
+        ? 'Tempo follows your pace while you walk.'
+        : 'Tempo back to the theme\u2019s own.'),
       onMode: (mode) => this.setMode(mode),
       onSimSpeed: (mps) => this.geo.setSimSpeed(mps),
       onTheme: (id) => this.setTheme(id),
@@ -843,6 +875,15 @@ class App {
       ...composed.plan(this.currentMood, seed, this.scene),
       themeId: base.id,
     };
+
+    // Pace lock (C3.9): bpm is continuous, so this only moves the engine's
+    // target and it glides there. Not while GPS has dropped to coarse (C2.3):
+    // that means you are standing still, and a speed derived from coarse fixes
+    // is jitter, not footsteps.
+    const speed = this.position?.speed ?? 0;
+    if (this.ui.paceLock() && speed > PACE_MIN_SPEED && this.position?.mode !== 'coarse') {
+      plan.bpm = paceLockedBpm(plan.bpm, speed);
+    }
 
     this.ui.setActiveTheme(base, pin);
     if (this.playing) this.setHostScene(name);

@@ -29,6 +29,7 @@ export class UI {
       powerLabel: $('powerLabel'),
       volume: $('volume'),
       ambience: $('ambience'),
+      paceLock: $('paceLock'),
       simRow: $('simRow'),
       simSpeed: $('simSpeed'),
       placeSearch: $('placeSearch'),
@@ -241,6 +242,14 @@ export class UI {
     return Number.isFinite(v) ? Math.min(1, Math.max(0, v / 100)) : 0.6;
   }
 
+  /**
+   * "Match my pace" (C3.9). Off by default and not persisted — like the
+   * volume and ambience sliders, it starts from index.html each launch.
+   */
+  paceLock() {
+    return !!this.el.paceLock?.checked;
+  }
+
   _bind() {
     this.el.power.addEventListener('click', () => this.h.onPower?.());
 
@@ -249,6 +258,9 @@ export class UI {
     });
     this.el.ambience.addEventListener('input', () => {
       this.h.onAmbience?.(this.ambienceLevel());
+    });
+    this.el.paceLock?.addEventListener('change', () => {
+      this.h.onPaceLock?.(this.paceLock());
     });
 
     for (const btn of document.querySelectorAll('.segmented [data-mode]')) {
