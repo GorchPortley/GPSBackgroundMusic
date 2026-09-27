@@ -15,6 +15,7 @@ import { describeTerrain } from './elevation.js';
 import { THEMES } from './themes/index.js';
 import { isThemeColor } from './themes/spec.js';
 import { LOOP_PRESETS } from './themes/presets/loops.js';
+import { loadSlider, saveSlider } from './store.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -141,6 +142,8 @@ export class UI {
     this._buildSimSpeeds();
     this._buildThemes();
     this._buildCueEditor();
+    // Before main.js's first applyVolume, so the engine starts at the stored level.
+    this._restoreSliders();
     this._bind();
     this._resize();
 
@@ -286,7 +289,29 @@ export class UI {
   }
 
   /**
-   * "Match my pace" (C3.9). Off by default and not persisted — like the
+   * Volume and ambience remember where they were left (store.js loadSlider:
+   * finite, clamped to the slider's own min/max, else index.html's default).
+   */
+  _restoreSliders() {
+    for (const name of ['volume', 'ambience']) {
+      const input = this.el[name];
+      if (!input) continue;
+      const min = Number(input.min), max = Number(input.max);
+      const fallback = Number(input.defaultValue);
+      input.value = String(loadSlider(name, { min, max, fallback }));
+    }
+  }
+
+  /** "Reset everything": back to index.html's positions (the stored ones are already cleared). */
+  resetSliders() {
+    for (const name of ['volume', 'ambience']) {
+      const input = this.el[name];
+      if (input) input.value = input.defaultValue;
+    }
+  }
+
+  /**
+   * "Match my pace" (C3.9). Off by default and not persisted — unlike the
    * volume and ambience sliders, it starts from index.html each launch.
    */
   paceLock() {
@@ -351,6 +376,9 @@ export class UI {
     this.el.ambience.addEventListener('input', () => {
       this.h.onAmbience?.(this.ambienceLevel());
     });
+    // Stored on release, not on every drag step.
+    this.el.volume.addEventListener('change', () => saveSlider('volume', this.el.volume.value));
+    this.el.ambience.addEventListener('change', () => saveSlider('ambience', this.el.ambience.value));
     this.el.paceLock?.addEventListener('change', () => {
       this.h.onPaceLock?.(this.paceLock());
     });

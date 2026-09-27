@@ -213,7 +213,8 @@ export class AudioEngine {
 
   _build() {
     const ctx = this.ctx;
-    this._volume = 0.8;
+    // Keep a level set before the first start (the restored slider, via setVolume).
+    if (!Number.isFinite(this._volume)) this._volume = 0.8;
 
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 1024;

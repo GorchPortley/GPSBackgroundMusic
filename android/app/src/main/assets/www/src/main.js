@@ -1027,12 +1027,16 @@ class App {
   /**
    * Factory state: forget the pack and every localStorage key the app owns,
    * uninstall imported themes, drop all cues (and the Android fences), and go
-   * back to the default theme. Session-only settings — volume, ambience, pace
-   * lock, weather, hills, where you are standing — are not stored and are left as they are.
+   * back to the default theme. The volume and ambience sliders return to their
+   * defaults. Session-only settings — pace lock, weather, hills, where you are
+   * standing — are not stored and are left as they are.
    */
   resetEverything() {
     for (const spec of customSpecs()) removeCustom(spec.id);
     clearStore();
+    this.ui.resetSliders();
+    this.applyVolume();
+    this.applyAmbience();
     this.pack = emptyPack();
     setTagOverrides({});
     this.theme = getTheme(DEFAULT_THEME_ID);

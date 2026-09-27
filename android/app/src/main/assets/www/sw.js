@@ -18,7 +18,7 @@
  *      rather than going silent.
  */
 
-const VERSION = 'v27';
+const VERSION = 'v28';
 const SHELL = `shell-${VERSION}`;
 const PLACES = `places-${VERSION}`;
 

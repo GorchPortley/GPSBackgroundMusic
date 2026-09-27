@@ -73,6 +73,43 @@ export function setFirstRunDismissed(dismissed) {
 }
 
 /**
+ * Slider positions (volume, ambience) under the app's prefix, so clearStore()
+ * ("Reset everything") puts them back to index.html's defaults. Only these
+ * names are stored. A missing, non-numeric or throwing read gives `fallback`;
+ * a number outside [min, max] is clamped. Pace lock, weather and hills are
+ * deliberately not stored — they start off every launch.
+ */
+const SLIDER_KEYS = {
+  volume: 'gps-background-music/volume',
+  ambience: 'gps-background-music/ambience',
+};
+
+export function loadSlider(name, { min, max, fallback }) {
+  try {
+    const key = SLIDER_KEYS[name];
+    const raw = key ? localStorage.getItem(key) : null;
+    if (raw === null || String(raw).trim() === '') return fallback;
+    const v = Number(raw);
+    if (!Number.isFinite(v)) return fallback;
+    return Math.min(max, Math.max(min, v));
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveSlider(name, value) {
+  try {
+    const key = SLIDER_KEYS[name];
+    const v = Number(value);
+    if (!key || !Number.isFinite(v)) return false;
+    localStorage.setItem(key, String(v));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Forget everything this app has stored in localStorage: the pack and any
  * other key under the app's prefix (so a flag added later is covered too).
  * Other sites' or other apps' keys on the same origin are left alone.
