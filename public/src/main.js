@@ -144,6 +144,7 @@ class App {
     // drops them on reboot), and honour a launch that came from crossing one.
     this.syncHostFences();
     this.checkHostAutoplay();
+    this.setupMediaSession();
 
     setInterval(() => this.replan(), REPLAN_MS);
     setInterval(() => {
@@ -192,6 +193,9 @@ class App {
       this.engine.stop();
       this.geo.stop();
       this.setHostPlaying(false);
+      // A later start may be a fresh service: send it the scene again.
+      this._hostScene = null;
+      this.setMediaPlaybackState();
       this.releaseWakeLock();
       this.ui.setPlaying(false);
       this.ui.setStatus('Stopped.');
@@ -210,6 +214,7 @@ class App {
     this.ui.setStatus('Listening for your surroundings…', 'busy');
     this.geo.start();
     this.setHostPlaying(true);
+    this.setMediaPlaybackState();
     this.requestWakeLock();
   }
 
@@ -877,10 +882,12 @@ class App {
   /*
    * Audio focus (Android): PlaybackService calls these from its focus
    * listener. The host decides what is transient; the page only obeys.
-   * Outside the APK nothing calls them.
+   * Media controls (C2.2) use hostPause/hostResume too: the notification's
+   * Play/Pause and headset buttons in the APK, navigator.mediaSession in a
+   * browser.
    */
 
-  /** Focus lost (for good, or for a call): stop, if playing. */
+  /** Focus lost, or the user paused from media controls: stop, if playing. */
   hostPause() {
     // A pause also ends any duck, so the next Play is at the slider level.
     if (this.hostDucked) {
@@ -890,7 +897,7 @@ class App {
     if (this.playing) this.togglePower();
   }
 
-  /** Focus back after a transient loss: play again, if stopped. */
+  /** Focus back after a transient loss, or Play pressed: play again, if stopped. */
   hostResume() {
     if (!this.playing) this.togglePower();
   }
@@ -909,6 +916,51 @@ class App {
       window.AndroidHost?.setScene?.(text);
     } catch {
       /* not running in the wrapper */
+    }
+    this.setMediaMetadata(text);
+  }
+
+  /*
+   * Media controls (C2.2). In the APK, the notification's Play/Pause and
+   * headset buttons go through PlaybackService's MediaSession, which calls
+   * hostPause()/hostResume(). A browser's own media controls, where it has
+   * them, call the very same two methods, so either way the page's `playing`
+   * stays the one source of truth. All of it is feature-detected: without
+   * navigator.mediaSession these do nothing.
+   */
+
+  setupMediaSession() {
+    const ms = navigator.mediaSession;
+    if (!ms || typeof ms.setActionHandler !== 'function') return;
+    const handlers = { play: () => this.hostResume(), pause: () => this.hostPause() };
+    for (const [action, fn] of Object.entries(handlers)) {
+      try {
+        ms.setActionHandler(action, fn);
+      } catch {
+        /* this browser does not support that action */
+      }
+    }
+    this.setMediaPlaybackState();
+  }
+
+  setMediaPlaybackState() {
+    const ms = navigator.mediaSession;
+    if (!ms) return;
+    try {
+      ms.playbackState = this.playing ? 'playing' : 'paused';
+    } catch {
+      /* read-only in some engines */
+    }
+  }
+
+  /** The scene name as the track title, as the notification shows it. */
+  setMediaMetadata(scene) {
+    const ms = navigator.mediaSession;
+    if (!ms || typeof window.MediaMetadata !== 'function') return;
+    try {
+      ms.metadata = new window.MediaMetadata({ title: scene || 'GPS Music', artist: 'GPS Music' });
+    } catch {
+      /* ignore: metadata is a nicety */
     }
   }
 

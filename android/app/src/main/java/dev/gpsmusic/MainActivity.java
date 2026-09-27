@@ -100,7 +100,8 @@ public class MainActivity extends Activity {
 
         web.setBackgroundColor(0xFF0B0F14);
         web.addJavascriptInterface(new Bridge(), "AndroidHost");
-        // Audio-focus changes from PlaybackService reach the page through here.
+        // Audio-focus changes and media controls from PlaybackService reach
+        // the page through here.
         PlaybackService.page = js -> {
             if (web != null) web.evaluateJavascript(js, null);
         };
@@ -383,13 +384,19 @@ public class MainActivity extends Activity {
             if (playing) {
                 // The user (or GAIN) is playing again: no pending resume.
                 PlaybackService.resumeOnGain = false;
+                PlaybackService.userPausing = false;
             } else if (PlaybackService.resumeOnGain) {
                 // Our own pause for a transient focus loss. Keep the service
                 // and its focus request so AUDIOFOCUS_GAIN can resume.
                 return;
             }
+            // A pause from the notification or a headset keeps the service
+            // (and its Play button); the in-app button and focus loss stop it.
+            String action = playing ? PlaybackService.ACTION_START
+                    : PlaybackService.userPausing ? PlaybackService.ACTION_PAUSE
+                    : PlaybackService.ACTION_STOP;
             Intent intent = new Intent(MainActivity.this, PlaybackService.class)
-                    .setAction(playing ? PlaybackService.ACTION_START : PlaybackService.ACTION_STOP);
+                    .setAction(action);
             if (playing) startForegroundService(intent);
             else startService(intent);
         }
