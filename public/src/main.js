@@ -37,6 +37,8 @@ const REPLAN_MS = 1500;
 const MOOD_ALPHA = 0.16;
 const FETCH_MIN_INTERVAL_MS = 8000;
 const FETCH_MAX_INTERVAL_MS = 75000;
+/** Refresh interval once GPS has dropped to coarse (standing still, geo.js). */
+const FETCH_STATIONARY_INTERVAL_MS = 300000;
 /** Opening the cue editor on a spot this close counts as "from here". */
 const HERE_METRES = 10;
 /** Volume under another app's transient sound (Android LOSS_TRANSIENT_CAN_DUCK). */
@@ -711,7 +713,10 @@ class App {
       ? haversine(this.lastFetchPos.lat, this.lastFetchPos.lng, pos.lat, pos.lng)
       : Infinity;
 
-    if (moved < moveThreshold && sinceLast < FETCH_MAX_INTERVAL_MS) return;
+    // Standing still (GPS gone coarse): the surroundings are not changing, so
+    // refresh far less often. Moving past the threshold still fetches at once.
+    const maxInterval = pos.mode === 'coarse' ? FETCH_STATIONARY_INTERVAL_MS : FETCH_MAX_INTERVAL_MS;
+    if (moved < moveThreshold && sinceLast < maxInterval) return;
 
     this.fetchPlaces(pos);
   }

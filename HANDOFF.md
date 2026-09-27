@@ -860,6 +860,8 @@ pitched take `octave`; unpitched take only `x` hits.
 | `REPLAN_MS` | main.js | 1500 | how often the plan is recomputed |
 | `MOOD_ALPHA` | main.js | 0.16 | mood smoothing per replan |
 | `FETCH_MIN/MAX_INTERVAL_MS` | main.js | 8000 / 75000 | lookup cadence, scaled by speed |
+| `STATIONARY_MS` / `MOVE_M` | geo.js | 120000 / 25 | still this long → coarse GPS; moved this far → fine |
+| `FETCH_STATIONARY_INTERVAL_MS` | main.js | 300000 | lookup refresh while GPS is coarse |
 | `CUE_SMOOTHING` | cues.js | 0.25 | cue strength approach per tick |
 | `PIN_ON` / `PIN_OFF` | cues.js | 0.55 / 0.32 | theme pin hysteresis |
 | `PRESENCE_FLOOR` | scenecontext.js | 1.6 | stops sparse areas over-claiming |

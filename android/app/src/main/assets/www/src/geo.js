@@ -11,7 +11,13 @@
  *             profiles: you need to hear a nightclub and a churchyard within a
  *             few seconds of each other.
  *
- * Emits { lat, lng, accuracy, speed (m/s), heading (deg), source }.
+ * Emits { lat, lng, accuracy, speed (m/s), heading (deg), source, mode }.
+ *
+ * `mode` is 'fine' or 'coarse' for live and sim (null for explore). After
+ * STATIONARY_MS standing still, live GPS is re-watched with low-accuracy
+ * options to save battery; any real movement switches straight back. The
+ * watch is swapped, never stopped: a cue crossing must still be seen. The
+ * simulator runs the very same detector, so its readout shows the mode too.
  */
 
 export const EARTH_RADIUS_M = 6371000;
@@ -43,6 +49,7 @@ export function offsetMeters(lat, lng, east, north) {
 }
 
 export const SIM_SPEEDS = [
+  { id: 'still', label: 'Still', mps: 0 },
   { id: 'walk', label: 'Walk', mps: 1.4 },
   { id: 'run', label: 'Run', mps: 3.5 },
   { id: 'bike', label: 'Bike', mps: 6.5 },
@@ -57,6 +64,15 @@ const SIM_TICK_MS = 1000;
 /** Loop wide enough to cross several ~600 m mock districts. */
 const SIM_LOOP_RADIUS_M = 1400;
 const SIM_WAYPOINTS = 9;
+
+/** Standing still this long drops live GPS to coarse. */
+export const STATIONARY_MS = 120000;
+/** Below this speed (m/s) counts as standing still. */
+const STATIONARY_SPEED = 0.5;
+/** Moving further than this from where you stopped switches back to fine. */
+const MOVE_M = 25;
+const FINE_OPTIONS = { enableHighAccuracy: true, maximumAge: 4000, timeout: 25000 };
+const COARSE_OPTIONS = { enableHighAccuracy: false, maximumAge: 15000, timeout: 30000 };
 
 export class GeoTracker {
   /**
@@ -73,11 +89,17 @@ export class GeoTracker {
     this._watchId = null;
     this._simTimer = null;
     this._simDistance = 0;
-    this._simSpeed = SIM_SPEEDS[0].mps;
+    this._simSpeed = SIM_SPEEDS.find((s) => s.id === 'walk').mps;
     this._route = buildLoop(DEFAULT_ORIGIN.lat, DEFAULT_ORIGIN.lng);
     this._pin = { ...DEFAULT_ORIGIN, name: 'London' };
 
     this._last = null;
+
+    /** 'fine' | 'coarse' — see _track. */
+    this.gpsMode = 'fine';
+    this._still = null;          // { lat, lng, since } where standing still began
+    /** Overridable in a test harness; the shipped value is STATIONARY_MS. */
+    this.stationaryMs = STATIONARY_MS;
   }
 
   get simSpeed() {
@@ -122,6 +144,7 @@ export class GeoTracker {
   start() {
     if (this.running) return;
     this.running = true;
+    this._resetMotion();
     if (this.mode === 'live') this._startLive();
     else if (this.mode === 'explore') this._startExplore();
     else this._startSim();
@@ -153,11 +176,69 @@ export class GeoTracker {
     }
 
     this.onStatus('Waiting for a GPS fix…');
+    this._watch(FINE_OPTIONS);
+  }
+
+  /**
+   * (Re-)register the live watch. The new watch is registered before the old
+   * one is cleared, so there is never a moment with no watch while running.
+   */
+  _watch(options) {
+    const old = this._watchId;
     this._watchId = navigator.geolocation.watchPosition(
       (pos) => this._handleLive(pos),
       (err) => this.onError(new Error(geoErrorMessage(err))),
-      { enableHighAccuracy: true, maximumAge: 4000, timeout: 25000 },
+      options,
     );
+    if (old !== null) navigator.geolocation.clearWatch(old);
+  }
+
+  /* ------------------------------------------------------ fine / coarse */
+
+  _resetMotion() {
+    this.gpsMode = 'fine';
+    this._still = null;
+  }
+
+  /**
+   * Stationary detector shared by live and sim. `speed` is the source's own
+   * speed when it reports one (sim always does); `nativeSpeed` says so.
+   * Returns the mode to emit, switching the live watch when it changes.
+   */
+  _track(lat, lng, accuracy, speed, nativeSpeed, now) {
+    const s = this._still;
+    const dist = s ? haversine(s.lat, s.lng, lat, lng) : Infinity;
+
+    if (this.gpsMode === 'coarse') {
+      // Any movement: more than MOVE_M from where we stopped, or a speed the
+      // source measured itself (a derived speed from coarse fixes is jitter).
+      if (dist > MOVE_M || (nativeSpeed && speed >= STATIONARY_SPEED)) {
+        this._still = { lat, lng, since: now };
+        this._setGpsMode('fine');
+      }
+      return this.gpsMode;
+    }
+
+    // Without a measured speed, a fix-to-fix derived speed is mostly GPS
+    // jitter (2 m in 1 s reads as walking pace). Staying within `accuracy` of
+    // one spot for the whole period already bounds the speed far below
+    // STATIONARY_SPEED, so the distance test alone decides.
+    const v = nativeSpeed ? speed : 0;
+    const tolerance = accuracy == null ? MOVE_M : Math.max(1, accuracy);
+    if (!s || v >= STATIONARY_SPEED || dist > tolerance) {
+      this._still = { lat, lng, since: now };
+    } else if (now - s.since >= this.stationaryMs) {
+      this._setGpsMode('coarse');
+    }
+    return this.gpsMode;
+  }
+
+  _setGpsMode(mode) {
+    if (mode === this.gpsMode) return;
+    this.gpsMode = mode;
+    if (this.mode === 'live' && this.running && this._watchId !== null) {
+      this._watch(mode === 'coarse' ? COARSE_OPTIONS : FINE_OPTIONS);
+    }
   }
 
   _handleLive(pos) {
@@ -179,6 +260,9 @@ export class GeoTracker {
     }
 
     this._last = { lat, lng, t: now };
+    const nativeSpeed = speed !== null && speed !== undefined && !Number.isNaN(speed);
+    const mode = this._track(lat, lng, accuracy ?? null, Math.max(0, derivedSpeed || 0),
+      nativeSpeed, now);
     this.onStatus('');
     this.onUpdate({
       lat,
@@ -187,6 +271,7 @@ export class GeoTracker {
       speed: Math.max(0, derivedSpeed || 0),
       heading: derivedHeading ?? 0,
       source: 'live',
+      mode,
     });
   }
 
@@ -200,6 +285,7 @@ export class GeoTracker {
       speed: 0,
       heading: 0,
       source: 'explore',
+      mode: null,
       label: this._pin.name,
     });
   }
@@ -219,6 +305,7 @@ export class GeoTracker {
     const tick = () => {
       this._simDistance += this._simSpeed * (SIM_TICK_MS / 1000);
       const { lat, lng, heading } = pointOnLoop(this._route, this._simDistance);
+      const mode = this._track(lat, lng, 5, this._simSpeed, true, Date.now());
       this.onUpdate({
         lat,
         lng,
@@ -226,6 +313,7 @@ export class GeoTracker {
         speed: this._simSpeed,
         heading,
         source: 'sim',
+        mode,
       });
     };
     tick();

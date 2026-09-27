@@ -133,12 +133,12 @@ export class UI {
   }
 
   _buildSimSpeeds() {
-    SIM_SPEEDS.forEach((s, i) => {
+    SIM_SPEEDS.forEach((s) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = s.label;
       b.dataset.mps = String(s.mps);
-      if (i === 0) b.classList.add('active');
+      if (s.id === 'walk') b.classList.add('active');
       b.addEventListener('click', () => {
         [...this.el.simSpeed.children].forEach((c) => c.classList.remove('active'));
         b.classList.add('active');
@@ -582,8 +582,11 @@ export class UI {
     this.heading = pos.heading ?? 0;
     this.el.coords.textContent = `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}`;
     this.el.speedOut.textContent = formatSpeed(pos.speed);
-    this.el.accuracyOut.textContent =
-      pos.accuracy == null ? '—' : `±${Math.round(pos.accuracy)} m`;
+    // Live and sim say whether GPS is fine or has dropped to coarse after
+    // standing still (geo.js); explore has no mode.
+    const acc = pos.accuracy == null ? '—' : `±${Math.round(pos.accuracy)} m`;
+    this.el.accuracyOut.textContent = pos.mode ? `${acc} · ${pos.mode}` : acc;
+    this.el.accuracyOut.dataset.mode = pos.mode || '';
   }
 
   setPlaces(places, radius) {
