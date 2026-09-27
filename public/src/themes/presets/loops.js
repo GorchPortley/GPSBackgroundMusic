@@ -87,4 +87,39 @@ export const LOOP_PRESETS = [
       { name: 'heartbeat', voice: 'kick', pattern: 'x ~ ~ ~ ~ ~ x ~ ~ ~ ~ ~ ~ ~ ~ ~', gain: 0.16 },
     ],
   },
+  {
+    id: 'piano',
+    name: 'Piano',
+    layers: [
+      // Sampled upright piano (P5): a slow broken chord, two notes a beat.
+      // Until the samples are decoded — or if they cannot be — the voice's
+      // FM electric-piano fallback plays the same notes.
+      {
+        name: 'piano',
+        voice: 'sampled',
+        pattern: '0 ~ 4 ~ 2 ~ 4 ~ 0 ~ 4 ~ 7 ~ 4 ~',
+        octave: 2,
+        dur: 2,
+        gain: 0.07,
+        params: { instrument: 'piano', release: 1.2, reverb: 0.4, delay: 0.1 },
+      },
+    ],
+  },
+  {
+    id: 'harp',
+    name: 'Harp',
+    layers: [
+      // Sampled concert harp (P5): a rolled chord at the top of each bar,
+      // the 32nd-note roll making it read as a harp. Falls back to the
+      // Karplus–Strong string (and that to the pluck).
+      {
+        name: 'harp',
+        voice: 'sampled',
+        pattern: '[0 2 4 7] ~ ~ ~ ~ ~ ~ ~',
+        octave: 2,
+        gain: 0.07,
+        params: { instrument: 'harp', reverb: 0.5, delay: 0.15 },
+      },
+    ],
+  },
 ];

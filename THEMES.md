@@ -314,6 +314,7 @@ within the step rather than stacking, so `"0*32"` articulates properly.
 | `blip` | pitched | `decay`, `duty`, `bend` — short chirps |
 | `fm` | pitched | `ratio` (0.25–12, default 2), `index` (0–12, default 2), `decay` (index envelope, s), `release`, `reverb`, `pan` — two-operator FM that holds for `dur`. `ratio: 1` electric piano, `3.5` with `index: 3, decay: 0.4` a bell, `7` glassy |
 | `string` | pitched | `decay` (s to fade ~60 dB, 0.05–10, default 1.5), `bright` (0 dull thumb – 1 bright pick, default 0.5), `reverb`, `delay`, `pan` — Karplus–Strong plucked string (an AudioWorklet): guitar, harp, koto, banjo. A one-shot like `pluck`; where AudioWorklet is unavailable it plays `pluck` instead |
+| `sampled` | pitched | `instrument` (a bundled id: `"piano"` upright piano, `"harp"` concert harp; default `"piano"` — never a file, path or URL), `release` (s from the end of the note to silence; default 0.8 piano, 1.6 harp), `reverb`, `delay`, `pan` — recorded samples (VSCO 2 CE, CC0), nearest of one recording every 3–4 semitones, repitched. Holds for `dur`. Opt-in: loaded the first time a playing layer uses it; until then, and for good if loading fails, it plays a synth instead (`piano` → `fm` electric piano, `harp` → `string`), level-matched |
 | `kick` | drum | `tone` |
 | `hat` | drum | `decay` |
 | `shaker` | drum | `decay` |
@@ -322,8 +323,18 @@ within the step rather than stacking, so `"0*32"` articulates properly.
 | `brush` | drum | `decay`, `swirl` |
 | `sweep` | drum | `dur`, `from`, `to`, `q` — noise riser |
 
-All are synthesised at runtime; there are no samples. Every voice also accepts
+All are synthesised at runtime except `sampled`, whose recordings ship with
+the app (`public/samples/`, about 1.5 MB, listed with their licence in
+`public/samples/LICENSES.md`). A pack can only choose among the bundled
+instruments by id; it cannot bring its own audio. Every voice also accepts
 `reverb` and `delay` as send amounts (`0..1`).
+
+```js
+{ name: 'keys', voice: 'sampled', pattern: '0 ~ 4 ~ 2 ~ 4 ~', octave: 2, dur: 2,
+  gain: 0.07, params: { instrument: 'piano', release: 1.2 } }
+```
+
+The cue editor's **Piano** and **Harp** loops are exactly this.
 
 `pad` and `strings` are voice-led: a new chord takes the inversion nearest
 the previous one (see `voiceLead` in the layer fields; `false` turns it off

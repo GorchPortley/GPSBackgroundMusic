@@ -24,8 +24,9 @@ Existing reference docs, which this guide does not repeat:
 A phone listens to where you are and composes background music for it. Nearby
 tagged places (a café, a park, a station) are turned into a six-number *mood*,
 a *theme* turns that mood into a musical plan, and a look-ahead scheduler
-synthesises every note in the browser with Web Audio. Nothing is sampled,
-nothing is downloaded, and nothing ever jumps: continuous qualities glide,
+synthesises every note in the browser with Web Audio. Nothing is sampled
+(except the opt-in piano and harp, P5), nothing is downloaded from outside
+the app, and nothing ever jumps: continuous qualities glide,
 and anything that would clash mid-phrase waits for a boundary.
 
 ```
@@ -84,7 +85,8 @@ world (unless it opts into the `scene`):
 ## 2. Map of the code
 
 Zero dependencies, no bundler, no build step. Native ES modules in the
-browser; Node built-ins on the server. ~9,600 lines total.
+browser; Node built-ins on the server. The only non-code assets beyond icons
+are the opt-in samples in `public/samples/` (P5, §3.1). ~9,600 lines total.
 
 | File | Owns | Key exports |
 |---|---|---|
@@ -101,7 +103,10 @@ browser; Node built-ins on the server. ~9,600 lines total.
 | `public/src/store.js` | Pack load/save/sanitise. **The security boundary** (themes and cues are deep-copied without `__proto__`/`constructor`/`prototype` keys) | `sanitise`, `loadPack`, `savePack`, `clearStore` (C4.2), `firstRunDismissed` / `setFirstRunDismissed` (C4.4), `readPackFile` |
 | `public/src/share.js` | Pack links (P4): `#pack=` = base64url(deflate-raw(JSON)); decode with input and 256 KB output caps; what a pack holds, in words | `encodePack`, `decodePayload`, `extractPayload`, `shareBase`, `summarisePack`, `SHARE_LINK_MAX`, `PUBLIC_SHARE_BASE` |
 | `public/src/audio/engine.js` | AudioContext, master chain, transport, plan commits | `AudioEngine` (`onCommit` hook: the UI accent turns at the commit, C4.3), `STEPS_PER_BAR`, `BARS_PER_PHRASE` |
-| `public/src/audio/voices.js` | 18 synthesised instruments | `padVoice`, `bassVoice`, `pluckVoice`, `kick`, … |
+| `public/src/audio/voices.js` | 18 synthesised instruments + `sampleVoice` (P5: bundled recordings, synth fallback until decoded) | `padVoice`, `bassVoice`, `pluckVoice`, `kick`, …, `sampleVoice`, `sampleStats` |
+| `public/src/audio/samples.js` | Sample bank (P5): fetch + decode an instrument the first time a note asks, once per AudioContext (WeakMap), cached; failure → permanent fallback on that context | `loadInstrument`, `instrument`, `instrumentState`, `nearestZone`, `sampleStats` |
+| `public/samples/instruments.js` | The instrument manifest (data, a JS module — no `.json` in `public/`): ids, zones `[midi, cents]`, release, levels, fallback. URLs are built from here only | `INSTRUMENTS`, `INSTRUMENT_IDS`, `isInstrument`, `sampleUrl` |
+| `public/samples/{piano,harp}/*.ogg`, `LICENSES.md` | 34 Ogg Vorbis files, 1,537,919 bytes, VSCO 2 CE (CC0); per-file source list | — |
 | `public/src/audio/ambience.js` | Ambience beds under the music (birds, water, traffic, murmur, rain), on `engine.ambienceGain` | `Ambience`, `AMBIENCE_KINDS` |
 | `public/src/audio/worklets/ks.js` | Karplus–Strong string processor (AudioWorklet, loaded in `engine.start()`) | registers `karplus-strong` |
 | `public/src/audio/theory.js` | Scales, modes, progressions, seeded RNG, voice leading | `scaleNote`, `chordNotes`, `pickMode`, `mulberry32`, `hashString`, `voiceLead` (nearest inversion in a fixed register window), `voiceDistance` |
@@ -140,6 +145,14 @@ No npm packages, no bundler, no transpiler. `package.json` has scripts only.
 service worker; a build step would make every phone deploy a two-stage job,
 and Strudel-style runtime dependencies bring their own audio engine (~825 KB)
 and arbitrary code execution. *Noticed by:* `node_modules/` appearing.
+
+**Sample assets (P5) — approved by the user.** Audio files are allowed as
+*assets* (not code, not a dependency) under `public/samples/`, on three
+conditions: every file is **CC0 / public domain, or its licence and
+attribution are recorded** in `public/samples/LICENSES.md` with its source
+URL; the whole directory stays **within ~3 MB** (now 1.54 MB); and the voice
+that uses them **degrades to a synth** when they are missing or undecodable.
+They are opt-in: no built-in theme plays them by default.
 
 ### 3.2 Packs are data, never code
 Patterns are **parsed**, not evaluated. Never `eval`, `new Function`, dynamic
@@ -238,6 +251,11 @@ The Android assets are a verbatim copy:
 `rm -rf android/app/src/main/assets/www && mkdir -p … && cp -r public/* android/app/src/main/assets/www/`
 then rebuild. Nothing named `dev-*.js` or any `.json` belongs in `public/`
 when you build.
+One deliberate exception (P5): the sample audio under `public/samples/*/`
+is shipped but **not** listed in `SHELL_FILES` — it is fetched only when a
+playing layer uses it and the SW caches it then; its manifest
+`samples/instruments.js` and `src/audio/samples.js` *are* listed. A new
+sample file still needs a `VERSION` bump.
 
 ### 3.12 Windows tooling
 This project lives on Windows 10 and is driven from Git Bash + PowerShell.
@@ -838,8 +856,22 @@ example pack (C0.3). Dismiss stores a flag in `localStorage`.
   150 m) over the last 250 m / 5 min; `contextualise`: `t += 0.10·climb01 −
   0.03·descent01`, `s += 0.04·high01` (climb01: 2 % → 0, 8 % → 1; high01:
   150 m above the start). Band badge ↗/↘, why line "· climbing".
-- **Sample-based instruments** (SoundFont/WAV): breaks §3.1 and adds
-  megabytes. Only with the user's explicit say-so.
+- ~~**Sample-based instruments**~~ — **done (P5)**, with the user's say-so
+  (§3.1 amended). `voice: "sampled"`, `params.instrument` = `"piano"` (VSCO 2
+  CE upright, 17 zones every 4 semitones A1–C#7) or `"harp"` (VSCO 2 CE harp,
+  17 zones every 3–4 semitones D2–A6); CC0, 34 mono Ogg Vorbis files,
+  1,537,919 bytes. Packs name an id only — `validateSpec` rejects anything
+  not in `INSTRUMENTS` (URLs, paths, `__proto__`…). `samples.js` loads an
+  instrument the first time a note asks for it, once per AudioContext; until
+  every zone is decoded, and for good if a fetch/decode fails, notes play
+  the fallback (`piano` → `fm` ratio 1, `harp` → `string` → `pluck`),
+  level-matched by `level` / `fallbackLevel`. Nearest zone, playbackRate
+  plus the zone's measured cents; 4 ms ramp in, hold `dur`, exponential
+  glide to 1e-4 over `release`, stop, disconnect on `ended`. Not in
+  `SHELL_FILES` (the manifest and loader are): the SW caches the Ogg files on
+  first use. `render-check.js` renders the fallback unless `&samples=1`.
+  Demonstrated by the **Piano** and **Harp** loop presets; built-in themes
+  unchanged.
 - ~~**Section form (A A B A)**~~ — **done (P2).** `spec.form.sections`
   (`"AABA"`, 1–8 letters A–D, one per phrase, cycling) and per-letter tweaks
   `form.B = { progression?, degreeShift?, density? }`; a layer's `sections`
@@ -905,6 +937,7 @@ example pack (C0.3). Dismiss stores a flag in `localStorage`.
 | `blip` | pitched | 0.05 | tiny sine pip |
 | `fm` | pitched | 0.08 | two-op FM: e-piano / bell / glass (`ratio`, `index`, `decay`) |
 | `string` | pitched | 0.10 | Karplus–Strong plucked string, AudioWorklet (`decay`, `bright`); falls back to `pluck` |
+| `sampled` | pitched | 0.10 | P5: bundled recordings, `instrument` = `piano` / `harp` (ids only), `release`; falls back to `fm` / `string` until decoded |
 | `kick`, `hat`, `shaker`, `rim`, `clank`, `brush`, `sweep` | unpitched | 0.38 / 0.05 / 0.035 / 0.08 / 0.09 / 0.05 / 0.06 | percussion & fx |
 
 Parameters per voice are in THEMES.md §4. Chordal voices take `chordSize`;

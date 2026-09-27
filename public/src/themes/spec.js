@@ -26,9 +26,10 @@ import {
 } from '../audio/theory.js';
 import {
   bassVoice, bellVoice, blipVoice, brush, clank, fluteVoice, fmVoice, hat, kick,
-  ksVoice, padVoice, pizzVoice, pluckVoice, pulseVoice, rim, shaker, stringVoice,
-  sweepVoice,
+  ksVoice, padVoice, pizzVoice, pluckVoice, pulseVoice, rim, sampleVoice, shaker,
+  stringVoice, sweepVoice,
 } from '../audio/voices.js';
+import { INSTRUMENT_IDS, isInstrument } from '../../samples/instruments.js';
 import { parsePattern, queryPattern, readValue } from './pattern.js';
 import { matchStrength, validateCondition } from './match.js';
 import { breathing, gate, leadChord, quantise, rnd, section } from './util.js';
@@ -56,6 +57,8 @@ export const VOICES = {
   blip: { kind: 'pitched', gain: 0.05, play: (io, o) => blipVoice(io, o) },
   fm: { kind: 'pitched', gain: 0.08, play: (io, o) => fmVoice(io, o) },
   string: { kind: 'pitched', gain: 0.10, play: (io, o) => ksVoice(io, o) },
+  // P5: a bundled recording, by id only (`params.instrument`); falls back to a synth.
+  sampled: { kind: 'pitched', gain: 0.10, play: (io, o) => sampleVoice(io, o) },
   kick: { kind: 'unpitched', gain: 0.38, play: (io, o) => kick(io, o) },
   hat: { kind: 'unpitched', gain: 0.05, play: (io, o) => hat(io, o) },
   shaker: { kind: 'unpitched', gain: 0.035, play: (io, o) => shaker(io, o) },
@@ -66,7 +69,7 @@ export const VOICES = {
 };
 
 /** Voices that take `dur`; the rest are one-shots with their own decay. */
-const SUSTAINED = new Set(['pad', 'strings', 'bass', 'pulse', 'flute', 'fm']);
+const SUSTAINED = new Set(['pad', 'strings', 'bass', 'pulse', 'flute', 'fm', 'sampled']);
 
 const DEFAULT_MODES = [
   'phrygian', 'aeolian', 'minorPentatonic', 'dorian',
@@ -206,6 +209,14 @@ export function validateSpec(spec) {
       errors.push(`${where}: duplicate layer name "${layer.name}".`);
     }
     errors.push(...validateCondition(layer.when, `${where}.when`));
+
+    // Sampled voice (P5): the instrument is one of the bundled ids and
+    // nothing else — a pack never names a file, a path or a URL.
+    if (layer.voice === 'sampled' && layer.params?.instrument !== undefined &&
+        !isInstrument(layer.params.instrument)) {
+      errors.push(`${where}: "instrument" must be one of the bundled instruments ` +
+        `(${INSTRUMENT_IDS.join(', ')}), not ${JSON.stringify(layer.params.instrument).slice(0, 60)}.`);
+    }
 
     for (const [k, v] of Object.entries(layer.params || {})) {
       if (!Array.isArray(v)) continue;

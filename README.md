@@ -8,7 +8,8 @@ from it in the browser. Walk from a park into a station and the score does not
 crossfade between two tracks — the same piece darkens, speeds up, loses its
 reverb and grows a pulse.
 
-No audio files, no bundler, no npm dependencies.
+No bundler, no npm dependencies, and no audio files, except two small
+opt-in sampled instruments (below).
 
 ---
 
@@ -92,7 +93,8 @@ kind of place always composes the same way and GPS jitter cannot reshuffle it.
 **5. Arrangement → sound** — a look-ahead scheduler drives the theme one 16th
 note at a time. Everything is synthesised from oscillators and noise: pads,
 bass, plucks, FM bells, percussion, a drone, a noise bed, a procedurally
-generated convolution reverb and a tempo-synced delay.
+generated convolution reverb and a tempo-synced delay. The one exception is
+opt-in: a `sampled` piano or harp (see [Themes](#themes)).
 
 ### Nothing jumps
 
@@ -164,7 +166,8 @@ specific one.
 saves where you are standing first). Give it a name, drag the radius
 (50 m – 3 km; the circle is drawn on the radar while the editor is open),
 pick a **Theme while here**, tick any loops to lay on top — backbeat, jangle,
-chime, pulse, foghorn, heartbeat — and press **Save**. Nothing is written
+chime, pulse, foghorn, heartbeat, piano, harp (the last two are sampled) — and
+press **Save**. Nothing is written
 until you do. If you are standing on the place, you hear it at once.
 **Place cues** lists every cue with its live strength and what it does; the
 ones you made have Edit and Delete, the ones that came in a pack are marked
@@ -272,9 +275,24 @@ Each interprets the same mood vector, so switching theme mid-walk rescores the
 same street. Levels are matched by a per-theme `trim`, so switching does not
 jump the volume; the swap itself waits for a phrase boundary.
 
-Everything is still synthesised — the extended voice set (pulse, bowed string,
-flute, pizzicato, sweep, blip, metallic clank, brush) lives in
-`public/src/audio/voices.js` alongside the originals.
+Everything the built-in themes play is synthesised — the extended voice set
+(pulse, bowed string, flute, pizzicato, sweep, blip, metallic clank, brush)
+lives in `public/src/audio/voices.js` alongside the originals.
+
+### Sampled instruments (opt-in)
+
+Two recorded instruments ship with the app for themes and cues that ask for
+them: an **upright piano** and a **concert harp**, from *VS Chamber
+Orchestra: Community Edition* by Versilian Studios (Sam Gossner, Simon
+Dalzell; <http://vis.versilstudios.net/vsco-community.html>), which is
+**CC0 1.0** — public domain. 34 short Ogg Vorbis files, 1.5 MB, in
+`public/samples/`; every file's source and the processing are listed in
+`public/samples/LICENSES.md`. A layer uses one with `voice: "sampled"` and
+`params: { instrument: "piano" }` (THEMES.md §4), or tick **Piano** / **Harp**
+in the cue editor. Nothing is downloaded until a playing layer asks for one;
+until the files are decoded — and for good if they cannot be — the same notes
+play on a matched synth (an FM electric piano; a plucked string). Packs can
+only pick a bundled instrument by name, never bring their own audio.
 
 ### Writing your own
 
@@ -373,6 +391,8 @@ install and no offline. Good for testing on the sofa; not the way to carry it.
 ### Offline behaviour
 
 - The app shell is cached on first load, so it opens with no signal.
+- The sampled piano/harp files are cached the first time they play, not on
+  install. Offline before that, their synth stand-ins play instead.
 - Place lookups are cached too: a route you have walked before replays offline,
   and a dropout mid-walk falls back to the last answer for that spot rather
   than going quiet. The status line says `offline — last known` when it does.
@@ -412,6 +432,8 @@ public/
   index.html    HUD
   manifest.webmanifest  installable-app metadata
   sw.js         service worker: offline shell + cached lookups
+  samples/      opt-in sampled instruments (P5): instruments.js manifest,
+                piano/ and harp/ Ogg files, LICENSES.md (CC0, VSCO 2 CE)
   styles.css
   src/
     main.js     wiring and the two update rates
@@ -423,7 +445,8 @@ public/
     ui.js       DOM + radar canvas
     audio/
       engine.js   master chain, effects, continuous layers, scheduler
-      voices.js   synth voices
+      voices.js   synth voices (+ the opt-in sampled voice)
+      samples.js  sample bank: lazy fetch + decode per AudioContext
       theory.js   scales, chords, progressions
     provider.js   server first, then Overpass/Nominatim direct
     osm-tags.js   OSM tags -> canonical types, shared with the server

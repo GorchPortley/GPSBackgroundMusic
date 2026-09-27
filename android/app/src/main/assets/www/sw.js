@@ -5,14 +5,20 @@
  *
  *   1. Cache the app shell so an installed copy opens instantly and works with
  *      no network — every sound is synthesised, so once the code is cached the
- *      music needs nothing else.
+ *      music needs nothing else. The one exception is the opt-in sampled
+ *      instruments (P5, public/samples/<instrument>/…ogg, ~1.5 MB, and LICENSES.md
+ *      beside them): they are NOT in SHELL_FILES (the manifest module
+ *      samples/instruments.js is), so an install stays light for everyone who never uses
+ *      them. The first time a playing plan asks for one, its files are
+ *      fetched and shellStrategy caches them like any other same-origin
+ *      file; offline before that, the voice plays its synth fallback.
  *
  *   2. Cache place lookups. A route you have walked before replays offline,
  *      and a flaky signal mid-walk falls back to the last answer for that spot
  *      rather than going silent.
  */
 
-const VERSION = 'v26';
+const VERSION = 'v27';
 const SHELL = `shell-${VERSION}`;
 const PLACES = `places-${VERSION}`;
 
@@ -41,6 +47,8 @@ const SHELL_FILES = [
   '/src/audio/ambience.js',
   '/src/audio/theory.js',
   '/src/audio/worklets/ks.js',
+  '/src/audio/samples.js',
+  '/samples/instruments.js',
   '/src/themes/index.js',
   '/src/themes/spec.js',
   '/src/themes/pattern.js',

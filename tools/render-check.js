@@ -14,6 +14,10 @@
  *        s.src = '/tools/render-check.js?pack=/examples/landmarks.json';
  *        document.head.appendChild(s);
  *      Omit ?pack= to render the built-in code themes instead.
+ *      Sampled instruments (P5): by default a fresh offline context has no
+ *      decoded samples, so `sampled` layers render their synth fallback.
+ *      Add &samples=1 to decode every bundled instrument on each context
+ *      first, so they render sampled. __R.sampleStats says which played.
  *   2. Poll window.__R until .state === 'done', then read .rows.
  *
  * PASS CRITERIA:  nan === 0 and clipped === 0 on every row, no row silent,
@@ -27,8 +31,11 @@ window.__R = { state: 'running', rows: [], errs: [] };
     const { AudioEngine } = await import('/src/audio/engine.js');
     const { themeFromSpec } = await import('/src/themes/spec.js');
     const { allThemes } = await import('/src/themes/index.js');
+    const { loadInstrument, sampleStats } = await import('/src/audio/samples.js');
+    const { INSTRUMENT_IDS } = await import('/samples/instruments.js');
 
     const packUrl = new URL(import.meta.url).searchParams.get('pack');
+    const withSamples = new URL(import.meta.url).searchParams.get('samples') === '1';
     const themes = packUrl
       ? (await (await fetch(packUrl)).json()).themes.map(themeFromSpec)
       : allThemes();
@@ -57,6 +64,7 @@ window.__R = { state: 'running', rows: [], errs: [] };
         window.AudioContext = real;
         clearInterval(eng._timer); eng._timer = null;
         eng.setVolume(1);
+        if (withSamples) await Promise.all(INSTRUMENT_IDS.map((id) => loadInstrument(off, id)));
 
         const plan = { ...theme.plan(mood, 12345), themeId: theme.id };
         eng.applyPlan(plan, theme.step.bind(theme));
@@ -85,6 +93,7 @@ window.__R = { state: 'running', rows: [], errs: [] };
     }
     const peaks = window.__R.rows.map((r) => r.peakDb);
     window.__R.spreadDb = +(Math.max(...peaks) - Math.min(...peaks)).toFixed(2);
+    window.__R.sampleStats = { ...sampleStats };
     window.__R.pass = window.__R.rows.every((r) => !r.nan && !r.clipped && !r.silent);
     window.__R.state = 'done';
   } catch (e) {

@@ -1,7 +1,9 @@
 /**
  * Synth voices. Everything here is generated from oscillators and noise at
- * runtime — there are no samples to load, which is what lets the timbre morph
- * continuously as the scene changes instead of crossfading between clips.
+ * runtime, which is what lets the timbre morph continuously as the scene
+ * changes instead of crossfading between clips. The one exception is the
+ * opt-in `sampleVoice` (P5), which plays bundled recordings and falls back to
+ * a synth here until they are decoded.
  *
  * Every voice takes an `io` bundle from the engine:
  *   { ctx, dry, reverb, delay, noiseBuffer, hasWorklets }
@@ -9,6 +11,10 @@
  */
 
 import { midiToFreq } from './theory.js';
+import { INSTRUMENTS, isInstrument } from '../../samples/instruments.js';
+import { instrument as sampleInstrument, nearestZone, sampleStats } from './samples.js';
+
+export { sampleStats };
 
 const SILENCE = 0.0001; // exponential ramps cannot reach true zero
 
@@ -426,6 +432,97 @@ export function ksVoice(io, {
   };
 
   route(io, out, time + life, { reverb: rv, delay: dl });
+}
+
+/* --------------------------------------------------------- sampled (P5) */
+
+/**
+ * The synth each bundled instrument falls back to, at a matched level: used
+ * for every note until the instrument's buffers are decoded on this context,
+ * for good if they cannot be, and for a note more than an octave from every
+ * zone. Same pattern as ksVoice → pluckVoice.
+ */
+function sampleFallback(io, id, { note, time, dur, gain: g, release, reverb, delay, pan }) {
+  sampleStats.fallback++;
+  const gain = g * (INSTRUMENTS[id]?.fallbackLevel ?? 1);
+  if (INSTRUMENTS[id]?.fallback === 'string') {
+    ksVoice(io, { note, time, gain, decay: 2.5, bright: 0.4, reverb, delay, pan });
+  } else {
+    // Piano: a two-op FM electric piano (ratio 1) is the nearest synth.
+    fmVoice(io, { note, time, dur, gain, ratio: 1, index: 1.4, decay: 0.9, release, reverb, delay, pan });
+  }
+}
+
+/**
+ * Sampled instrument (P5, opt-in): `instrument` is a bundled id from
+ * samples/instruments.js ("piano", "harp") — never a path or URL. Plays the
+ * nearest recorded zone through an AudioBufferSourceNode pitched by
+ * playbackRate (detuned by the zone's measured cents), holds for `dur`, then
+ * falls exponentially to silence over `release` seconds (the recording's own
+ * decay carries on underneath). Until the buffers are decoded — the first
+ * note on a context starts that load — the instrument's synth fallback
+ * plays instead (sampleFallback).
+ */
+export function sampleVoice(io, {
+  note, time, dur, instrument: id = 'piano', gain = 0.1, release,
+  reverb = 0.3, delay = 0.1, pan = 0,
+}) {
+  const ctx = io.ctx;
+  if (!Number.isFinite(note) || !Number.isFinite(time) || !Number.isFinite(midiToFreq(note))) return;
+  const which = isInstrument(id) ? id : 'piano';
+  const def = INSTRUMENTS[which];
+
+  const d = clamp(finite(dur, 0.5), 0.02, 30);
+  const peak = Math.max(0, finite(gain, 0.1));
+  const rel = clamp(finite(release, def.release), 0.02, 10);
+  const rv = Math.max(0, finite(reverb, 0.3));
+  const dl = Math.max(0, finite(delay, 0.1));
+  const p = clamp(finite(pan, 0), -1, 1);
+  const args = { note, time, dur: d, gain: peak, release: rel, reverb: rv, delay: dl, pan: p };
+
+  const inst = sampleInstrument(ctx, which);
+  const zone = inst && nearestZone(inst.zones, note);
+  if (!zone || Math.abs(note - zone.midi) > 12) {
+    sampleFallback(io, which, args);
+    return;
+  }
+
+  const level = Math.max(SILENCE, peak * def.level);
+  const end = time + d + rel;
+
+  const src = ctx.createBufferSource();
+  src.buffer = zone.buffer;
+  src.playbackRate.value = Math.pow(2, (note - zone.midi - zone.cents / 100) / 12);
+
+  const env = ctx.createGain();
+  // A 4 ms ramp in (the recording has its own attack; this only guards the
+  // first sample), hold, then an exponential glide to silence: no click.
+  env.gain.setValueAtTime(0, time);
+  env.gain.linearRampToValueAtTime(level, time + Math.min(0.004, d * 0.5));
+  env.gain.setValueAtTime(level, time + d);
+  env.gain.exponentialRampToValueAtTime(SILENCE, end);
+
+  let panner = null;
+  if (p !== 0 && ctx.createStereoPanner) {
+    panner = ctx.createStereoPanner();
+    panner.pan.value = p;
+    src.connect(panner).connect(env);
+  } else {
+    src.connect(env);
+  }
+
+  sampleStats.created++;
+  src.onended = () => {
+    sampleStats.ended++;
+    try {
+      src.disconnect();
+      if (panner) panner.disconnect();
+    } catch { /* already gone */ }
+  };
+  src.start(time);
+  src.stop(end + 0.05);
+
+  route(io, env, end + 0.05, { reverb: rv, delay: dl });
 }
 
 /* -------------------------------------------------------------- percussion */

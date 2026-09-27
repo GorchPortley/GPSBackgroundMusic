@@ -78,6 +78,9 @@ public class MainActivity extends Activity {
         MIME.put("svg", "image/svg+xml");
         MIME.put("ico", "image/x-icon");
         MIME.put("woff2", "font/woff2");
+        // Sampled instruments (P5), fetched and decoded by the page.
+        MIME.put("ogg", "audio/ogg");
+        MIME.put("mp3", "audio/mpeg");
     }
 
     @Override

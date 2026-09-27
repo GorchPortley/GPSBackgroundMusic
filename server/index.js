@@ -68,6 +68,8 @@ const MIME = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
+  '.ogg': 'audio/ogg',
+  '.mp3': 'audio/mpeg',
 };
 
 const handler = async (req, res) => {
