@@ -100,6 +100,10 @@ public class MainActivity extends Activity {
 
         web.setBackgroundColor(0xFF0B0F14);
         web.addJavascriptInterface(new Bridge(), "AndroidHost");
+        // Audio-focus changes from PlaybackService reach the page through here.
+        PlaybackService.page = js -> {
+            if (web != null) web.evaluateJavascript(js, null);
+        };
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -354,6 +358,7 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         // Leaving the service running without a UI would be a stuck notification.
         stopService(new Intent(this, PlaybackService.class));
+        PlaybackService.page = null;
         if (web != null) {
             web.destroy();
             web = null;
@@ -375,6 +380,14 @@ public class MainActivity extends Activity {
     private class Bridge {
         @JavascriptInterface
         public void setPlaying(boolean playing) {
+            if (playing) {
+                // The user (or GAIN) is playing again: no pending resume.
+                PlaybackService.resumeOnGain = false;
+            } else if (PlaybackService.resumeOnGain) {
+                // Our own pause for a transient focus loss. Keep the service
+                // and its focus request so AUDIOFOCUS_GAIN can resume.
+                return;
+            }
             Intent intent = new Intent(MainActivity.this, PlaybackService.class)
                     .setAction(playing ? PlaybackService.ACTION_START : PlaybackService.ACTION_STOP);
             if (playing) startForegroundService(intent);

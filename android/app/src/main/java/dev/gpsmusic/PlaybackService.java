@@ -8,7 +8,12 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 
 /**
  * Keeps the app alive while it is playing.
@@ -47,6 +52,29 @@ public class PlaybackService extends Service {
     /** Set by the service so the activity can reflect real state after a restart. */
     public static volatile boolean running = false;
 
+    /**
+     * Where audio-focus changes are sent: a JS call run in MainActivity's
+     * WebView. Set by the activity while it has one; null otherwise.
+     */
+    interface Page {
+        void call(String js);
+    }
+
+    static volatile Page page;
+
+    /**
+     * Paused for a transient focus loss (a call, navigation prompt): the page
+     * has stopped, but the service and the focus request stay alive so GAIN
+     * can start it again. While set, MainActivity ignores the page's
+     * setPlaying(false) — that stop is ours, not the user's.
+     */
+    static volatile boolean resumeOnGain = false;
+
+    private AudioManager audioManager;
+    private AudioFocusRequest focusRequest;
+    private boolean hasFocus = false;
+    private boolean ducked = false;
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
@@ -74,6 +102,8 @@ public class PlaybackService extends Service {
 
         if (ACTION_STOP.equals(action)) {
             running = false;
+            resumeOnGain = false;
+            abandonFocus();
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
             return START_NOT_STICKY;
@@ -96,6 +126,8 @@ public class PlaybackService extends Service {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                         | ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
         running = true;
+        // Playback proper. Scene updates come through here too; only ask once.
+        if (!hasFocus) requestFocus();
 
         // Deliberately not sticky: if Android does kill us, silently restarting
         // audio in someone's pocket would be worse than staying stopped.
@@ -105,7 +137,86 @@ public class PlaybackService extends Service {
     @Override
     public void onDestroy() {
         running = false;
+        resumeOnGain = false;
+        abandonFocus();
         super.onDestroy();
+    }
+
+    /* ------------------------------------------------------------ audio focus */
+
+    /**
+     * Ask for long-term focus as music. willPauseWhenDucked(true) is not
+     * "we pause": it tells Android 8+ not to duck us automatically and to
+     * deliver LOSS_TRANSIENT_CAN_DUCK instead, so the page can glide its own
+     * volume down (nothing pops) rather than have the system cut it.
+     */
+    private void requestFocus() {
+        if (audioManager == null) audioManager = getSystemService(AudioManager.class);
+        if (audioManager == null) return;
+        if (focusRequest == null) {
+            focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build())
+                    .setWillPauseWhenDucked(true)
+                    .setOnAudioFocusChangeListener(this::onFocusChange,
+                            new Handler(Looper.getMainLooper()))
+                    .build();
+        }
+        // FAILED (e.g. during a call the user chose to play through) is left
+        // alone: the user pressed Play, so play.
+        hasFocus = audioManager.requestAudioFocus(focusRequest)
+                == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+    }
+
+    private void abandonFocus() {
+        if (audioManager != null && focusRequest != null) {
+            audioManager.abandonAudioFocusRequest(focusRequest);
+        }
+        hasFocus = false;
+        ducked = false;
+    }
+
+    /** Runs on the main looper, which is also the WebView's thread. */
+    private void onFocusChange(int change) {
+        switch (change) {
+            case AudioManager.AUDIOFOCUS_LOSS:
+                // Another app is playing now. Stop for good; the page's stop
+                // then stops this service, which abandons the request.
+                hasFocus = false;
+                resumeOnGain = false;
+                ducked = false;
+                callPage("hostPause()");
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                hasFocus = false;
+                resumeOnGain = true;   // set before the page's stop arrives
+                callPage("hostPause()");
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
+                ducked = true;
+                callPage("hostDuck(true)");
+                break;
+            case AudioManager.AUDIOFOCUS_GAIN:
+                hasFocus = true;
+                if (ducked) {
+                    ducked = false;
+                    callPage("hostDuck(false)");
+                }
+                if (resumeOnGain) {
+                    resumeOnGain = false;
+                    callPage("hostResume()");
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    private static void callPage(String method) {
+        Page target = page;
+        if (target != null) target.call("window.gpsMusic && window.gpsMusic." + method);
     }
 
     private Notification buildNotification(String scene) {

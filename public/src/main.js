@@ -39,6 +39,8 @@ const FETCH_MIN_INTERVAL_MS = 8000;
 const FETCH_MAX_INTERVAL_MS = 75000;
 /** Opening the cue editor on a spot this close counts as "from here". */
 const HERE_METRES = 10;
+/** Volume under another app's transient sound (Android LOSS_TRANSIENT_CAN_DUCK). */
+const HOST_DUCK = 0.25;
 
 class App {
   constructor() {
@@ -47,6 +49,8 @@ class App {
     this.theme = getTheme(DEFAULT_THEME_ID);
 
     this.playing = false;
+    /** Ducked by the Android host under a notification or alarm. */
+    this.hostDucked = false;
     this.position = null;
     this.analysis = null;
     this.currentMood = null;
@@ -78,7 +82,7 @@ class App {
 
     this.ui = new UI({
       onPower: () => this.togglePower(),
-      onVolume: (v) => this.engine.setVolume(v),
+      onVolume: () => this.applyVolume(),
       onMode: (mode) => this.setMode(mode),
       onSimSpeed: (mps) => this.geo.setSimSpeed(mps),
       onTheme: (id) => this.setTheme(id),
@@ -131,7 +135,7 @@ class App {
     this.ui.renderSaved(this.pack.locations);
     this.renderCueList();
     this.ui.refreshThemes(this.theme.id);
-    this.engine.setVolume(Number(this.ui.el.volume.value) / 100);
+    this.applyVolume();
 
     this.loadConfig();
     this.loadExampleList();
@@ -858,6 +862,43 @@ class App {
     } catch {
       /* not running in the wrapper */
     }
+  }
+
+  /**
+   * The slider, times the duck while another app holds transient focus.
+   * The engine's setVolume glides with setTargetAtTime (τ 0.1 s, so ~0.3 s
+   * to settle): ducking and un-ducking never pop.
+   */
+  applyVolume() {
+    const slider = Number(this.ui.el.volume.value) / 100;
+    this.engine.setVolume(this.hostDucked ? slider * HOST_DUCK : slider);
+  }
+
+  /*
+   * Audio focus (Android): PlaybackService calls these from its focus
+   * listener. The host decides what is transient; the page only obeys.
+   * Outside the APK nothing calls them.
+   */
+
+  /** Focus lost (for good, or for a call): stop, if playing. */
+  hostPause() {
+    // A pause also ends any duck, so the next Play is at the slider level.
+    if (this.hostDucked) {
+      this.hostDucked = false;
+      this.applyVolume();
+    }
+    if (this.playing) this.togglePower();
+  }
+
+  /** Focus back after a transient loss: play again, if stopped. */
+  hostResume() {
+    if (!this.playing) this.togglePower();
+  }
+
+  /** Another sound wants to be heard over us (a notification): duck under it. */
+  hostDuck(on) {
+    this.hostDucked = !!on;
+    this.applyVolume();
   }
 
   /** Show the current scene on the notification, so the lock screen says something. */
