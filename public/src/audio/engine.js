@@ -29,6 +29,8 @@ export class AudioEngine {
   constructor() {
     this.ctx = null;
     this.running = false;
+    this.hasWorklets = false;
+    this._init = null;
 
     // A plan and the theme that produced it are one unit and must never be
     // separated: a theme's step() reads fields only its own plan() writes, so
@@ -61,12 +63,12 @@ export class AudioEngine {
       /* not supported here; nothing to fall back to */
     }
 
-    if (!this.ctx) {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) throw new Error('This browser has no Web Audio support.');
-      this.ctx = new Ctx({ latencyHint: 'playback' });
-      this._build();
+    // Memoised: a second start() while the first is still loading the
+    // worklet must wait for the same graph, not build another.
+    if (!this._init) {
+      this._init = this._createContext().catch((e) => { this._init = null; this.ctx = null; throw e; });
     }
+    await this._init;
     if (this.ctx.state === 'suspended') await this.ctx.resume();
 
     if (this.running) return;
@@ -80,6 +82,35 @@ export class AudioEngine {
     this._step = 0;
     this._nextStepTime = now + START_DELAY_S;
     this._timer = setInterval(() => this._tick(), LOOKAHEAD_MS);
+  }
+
+  async _createContext() {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) throw new Error('This browser has no Web Audio support.');
+    // Not published as this.ctx until the graph is built, so applyPlan()
+    // and friends keep treating the engine as unstarted during the await.
+    const ctx = new Ctx({ latencyHint: 'playback' });
+    // Ask to resume while still inside the user gesture; iOS may refuse a
+    // resume() that only happens after the await below.
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+    // Worklet voices (the Karplus–Strong string) need their module loaded
+    // before any node is made. AudioWorklet needs a secure context (HTTPS,
+    // localhost, or the APK's appassets origin); if it is missing or the
+    // load fails, voices fall back to their oscillator versions and the app
+    // still plays. Resolved against this file, so it works under any root
+    // (dev server and appassets both serve it at /src/audio/worklets/ks.js).
+    this.hasWorklets = false;
+    try {
+      if (ctx.audioWorklet) {
+        await ctx.audioWorklet.addModule(new URL('./worklets/ks.js', import.meta.url).href);
+        this.hasWorklets = true;
+      }
+    } catch (e) {
+      console.warn('AudioWorklet unavailable; string voice falls back to pluck.', e);
+    }
+    this.ctx = ctx;
+    this._build();
   }
 
   /** Fade out, then park the scheduler. Safe to call repeatedly. */
@@ -224,6 +255,7 @@ export class AudioEngine {
       reverb: this.reverbBus,
       delay: this.delayBus,
       noiseBuffer: this.noiseBuffer,
+      hasWorklets: !!this.hasWorklets,
     };
   }
 

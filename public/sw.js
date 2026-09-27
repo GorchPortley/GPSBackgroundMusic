@@ -12,7 +12,7 @@
  *      rather than going silent.
  */
 
-const VERSION = 'v10';
+const VERSION = 'v11';
 const SHELL = `shell-${VERSION}`;
 const PLACES = `places-${VERSION}`;
 
@@ -36,6 +36,7 @@ const SHELL_FILES = [
   '/src/audio/engine.js',
   '/src/audio/voices.js',
   '/src/audio/theory.js',
+  '/src/audio/worklets/ks.js',
   '/src/themes/index.js',
   '/src/themes/spec.js',
   '/src/themes/pattern.js',

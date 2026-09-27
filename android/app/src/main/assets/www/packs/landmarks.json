@@ -107,11 +107,11 @@
         },
         {
           "name": "pah",
-          "voice": "pluck",
+          "voice": "string",
           "pattern": "~ ~ ~ [2 4] ~ ~ ~ ~ ~ [2 4] ~ ~",
           "octave": 3,
           "gain": 0.05,
-          "params": { "decay": 0.35, "bright": 0.6, "pan": 0.25 }
+          "params": { "decay": 0.8, "bright": 0.6, "pan": 0.25 }
         },
         {
           "name": "brush",

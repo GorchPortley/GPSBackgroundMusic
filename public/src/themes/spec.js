@@ -26,7 +26,7 @@ import {
 } from '../audio/theory.js';
 import {
   bassVoice, bellVoice, blipVoice, brush, clank, fluteVoice, fmVoice, hat, kick,
-  padVoice, pizzVoice, pluckVoice, pulseVoice, rim, shaker, stringVoice,
+  ksVoice, padVoice, pizzVoice, pluckVoice, pulseVoice, rim, shaker, stringVoice,
   sweepVoice,
 } from '../audio/voices.js';
 import { parsePattern, queryPattern, readValue } from './pattern.js';
@@ -54,6 +54,7 @@ export const VOICES = {
   pulse: { kind: 'pitched', gain: 0.085, play: (io, o) => pulseVoice(io, o) },
   blip: { kind: 'pitched', gain: 0.05, play: (io, o) => blipVoice(io, o) },
   fm: { kind: 'pitched', gain: 0.08, play: (io, o) => fmVoice(io, o) },
+  string: { kind: 'pitched', gain: 0.10, play: (io, o) => ksVoice(io, o) },
   kick: { kind: 'unpitched', gain: 0.38, play: (io, o) => kick(io, o) },
   hat: { kind: 'unpitched', gain: 0.05, play: (io, o) => hat(io, o) },
   shaker: { kind: 'unpitched', gain: 0.035, play: (io, o) => shaker(io, o) },
