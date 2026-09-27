@@ -95,6 +95,7 @@ browser; Node built-ins on the server. ~9,600 lines total.
 | `public/src/tags.js` | Place type → mood profile; categories; user overrides | `TAG_PROFILES`, `profileFor`, `categoryFor`, `setTagOverride`, `placeLabel`, `countedPlaces` |
 | `public/src/osm-tags.js` | OSM tag soup → canonical type | `osmType` |
 | `public/src/weather.js` | Open-Meteo current weather (C3.10): guarded fetch, 15-min cache, 0..1 factors | `WeatherSource`, `fetchWeather`, `weatherFactors`, `weatherUrl` |
+| `public/src/elevation.js` | Hills (P3): GPS altitude or Open-Meteo elevation (guarded, 2-dp grid corners cached per session, bilinear), smoothed history → grade | `ElevationSource`, `terrainFactors`, `describeTerrain`, `elevationUrl`, `cellCorners` |
 | `public/src/scene.js` | Places → mood. Emphasis, peak-pull, contrast, motion | `analyzePlaces`, `contextualise`, `sceneKey`, `lerpMood`, `topContributors`, `whyLine` (C4.1) |
 | `public/src/scenecontext.js` | The `scene` object cues and code themes query | `buildScene` → `{tagWeight(), categoryWeight(), nearest(), named()}` |
 | `public/src/store.js` | Pack load/save/sanitise. **The security boundary** | `sanitise`, `loadPack`, `savePack`, `clearStore` (C4.2), `firstRunDismissed` / `setFirstRunDismissed` (C4.4), `readPackFile` |
@@ -812,8 +813,16 @@ example pack (C0.3). Dismiss stores a flag in `localStorage`.
 - **Share a pack by link** (`#pack=<base64>`): great for the sharing goal,
   but URL length caps it at ~2 KB packs after compression; needs a
   `CompressionStream` step. Do it only if people actually share.
-- **Elevation → tension** (Open-Meteo elevation API): climbing a hill adds
-  `t`. Cheap once C3.10 exists; fold it in there if wanted.
+- ~~**Elevation → tension**~~ — **done (P3).** `public/src/elevation.js`,
+  own toggle "Hills" (default off, not persisted). Height is GPS
+  `coords.altitude` when the fix has one (accuracy ≤ 30 m or unstated), else
+  Open-Meteo `/v1/elevation` at the four 2-dp corners of your 0.01° cell,
+  bilinear between them; corners cached in memory for the session, requests
+  seq-guarded (§3.14), failures silent with a 60 s per-cell backoff. A source
+  change or a > 500 m step restarts the history. Grade = gain ÷ max(run,
+  150 m) over the last 250 m / 5 min; `contextualise`: `t += 0.10·climb01 −
+  0.03·descent01`, `s += 0.04·high01` (climb01: 2 % → 0, 8 % → 1; high01:
+  150 m above the start). Band badge ↗/↘, why line "· climbing".
 - **Sample-based instruments** (SoundFont/WAV): breaks §3.1 and adds
   megabytes. Only with the user's explicit say-so.
 - ~~**Section form (A A B A)**~~ — **done (P2).** `spec.form.sections`
@@ -899,6 +908,8 @@ pitched take `octave`; unpitched take only `x` hits.
 | `PRESENCE_FLOOR` | scenecontext.js | 1.6 | stops sparse areas over-claiming |
 | `URBAN_HALF_WEIGHT` | scene.js | 14 | total weight at which urbanness = 0.5 |
 | `STEPS_PER_BAR` / `BARS_PER_PHRASE` | engine.js | 16 / 4 | the grid |
+| `GRADE_FLAT` / `GRADE_FULL` | elevation.js | 0.02 / 0.08 | grade at which climbing starts / is full (`t` +0.10) |
+| `TERRAIN_WINDOW_M` / `_MS` | elevation.js | 250 / 300000 | the grade is measured over this much travel or time |
 | makeup / limiter | engine.js | 1.65 / −1.5 dB 20:1 | do not touch to fix one theme |
 
 ### D. Things that were verified and things that were not

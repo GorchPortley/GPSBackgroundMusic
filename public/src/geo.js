@@ -11,7 +11,8 @@
  *             profiles: you need to hear a nightclub and a churchyard within a
  *             few seconds of each other.
  *
- * Emits { lat, lng, accuracy, speed (m/s), heading (deg), source, mode }.
+ * Emits { lat, lng, accuracy, speed (m/s), heading (deg), source, mode };
+ * live fixes also carry { altitude, altitudeAccuracy } (m, often null).
  *
  * `mode` is 'fine' or 'coarse' for live and sim (null for explore). After
  * STATIONARY_MS standing still, live GPS is re-watched with low-accuracy
@@ -242,7 +243,8 @@ export class GeoTracker {
   }
 
   _handleLive(pos) {
-    const { latitude: lat, longitude: lng, accuracy, speed, heading } = pos.coords;
+    const { latitude: lat, longitude: lng, accuracy, speed, heading,
+      altitude, altitudeAccuracy } = pos.coords;
     const now = pos.timestamp || Date.now();
 
     // Browsers often report speed/heading as null on desktop; derive them.
@@ -270,6 +272,9 @@ export class GeoTracker {
       accuracy: accuracy ?? null,
       speed: Math.max(0, derivedSpeed || 0),
       heading: derivedHeading ?? 0,
+      // Often null (desktop, network fixes); elevation.js prefers it when present.
+      altitude: altitude ?? null,
+      altitudeAccuracy: altitudeAccuracy ?? null,
       source: 'live',
       mode,
     });

@@ -10,6 +10,7 @@ import {
   canonicalType, countedPlaces, DIMS, IGNORED_TYPES, NEUTRAL, placeLabel, profileFor,
 } from './tags.js';
 import { weatherFactors } from './weather.js';
+import { terrainFactors } from './elevation.js';
 
 /** A place's own type counts more than the extra types Google attaches. */
 const PRIMARY_TYPE_WEIGHT = 1.0;
@@ -230,11 +231,14 @@ export function timeBand(hour) {
 /**
  * Fold in the things that are true about *you* rather than about the map:
  * how built-up it is here, how fast you are travelling, the hour, and (when
- * the weather toggle is on) the weather.
+ * the weather toggle is on) the weather, and (when the hills toggle is on)
+ * whether you are climbing.
  *
  * @param {object} analysis result of analyzePlaces
- * @param {{speed?: number, hour?: number, weather?: object|null}} ctx speed in
- *   m/s; weather is weather.js's `{ rainMmH, windKmh, cloudPct, isDay }`
+ * @param {{speed?: number, hour?: number, weather?: object|null,
+ *   terrain?: object|null}} ctx speed in m/s; weather is weather.js's
+ *   `{ rainMmH, windKmh, cloudPct, isDay }`; terrain is elevation.js's
+ *   `{ grade, aboveM, … }`
  */
 export function contextualise(analysis, ctx = {}) {
   const mood = { ...analysis.mood };
@@ -270,6 +274,18 @@ export function contextualise(analysis, ctx = {}) {
   mood.b -= 0.10 * rain01 + 0.05 * cloud01;
   mood.w -= 0.05 * rain01;
   mood.s += 0.08 * wind01;
+
+  // Hills (P3): climbing adds tension — the effort, not the altitude. climb01
+  // is the grade over the last ~250 m of travel, 0 at ≤ 2 % and 1 at ≥ 8 %
+  // (elevation.js `terrainFactors`). 0.10 at full is the same size as the
+  // weather's rain on brightness: enough to tip the harmony (a mood word and,
+  // often, a new sceneKey) without drowning the place, whose own tension
+  // spans ~0.2–0.8. Going down relaxes a little (a third as much), and being
+  // well above where you started opens the space a touch (0.04 at 150 m).
+  // All zero with the toggle off or on the flat.
+  const { climb01, descent01, high01 } = terrainFactors(ctx.terrain);
+  mood.t += 0.10 * climb01 - 0.03 * descent01;
+  mood.s += 0.04 * high01;
 
   for (const d of DIMS) mood[d] = clamp01(mood[d]);
   return { mood, motion, band };
@@ -439,8 +455,9 @@ function weatherWords(weather) {
  * @param {object} mood      the mood being aimed at (after contextualise)
  * @param {object} analysis  result of analyzePlaces
  * @param {object|null} weather weather.js's current reading, or null when off
+ * @param {object|null} terrain elevation.js's reading, or null when off
  */
-export function whyLine(mood, analysis, weather = null) {
+export function whyLine(mood, analysis, weather = null, terrain = null) {
   if (!analysis || !mood) return '';
   // Types that share an everyday name ("station" for train and transit
   // stations) are one entry, so ask for a few spare and merge before cutting.
@@ -452,6 +469,7 @@ export function whyLine(mood, analysis, weather = null) {
     else if (byLabel.size < 3) byLabel.set(label, { type: c.type, count: c.count });
   }
   const extra = weatherWords(weather);
+  if (terrainFactors(terrain).climb01 >= 0.3) extra.push('climbing');
   const tail = extra.length ? ` · ${extra.join(', ')}` : '';
   if (!byLabel.size) return `${describeMood(mood)}: nothing tagged nearby${tail}`;
   const places = [...byLabel.values()].map((c) => countedPlaces(c.type, c.count)).join(', ');

@@ -11,6 +11,7 @@ import {
 } from './tags.js';
 import { SIM_SPEEDS } from './geo.js';
 import { describeWeather } from './weather.js';
+import { describeTerrain } from './elevation.js';
 import { THEMES } from './themes/index.js';
 import { isThemeColor } from './themes/spec.js';
 import { LOOP_PRESETS } from './themes/presets/loops.js';
@@ -41,6 +42,7 @@ export class UI {
       ambience: $('ambience'),
       paceLock: $('paceLock'),
       weatherOn: $('weatherOn'),
+      hillsOn: $('hillsOn'),
       simRow: $('simRow'),
       simSpeed: $('simSpeed'),
       placeSearch: $('placeSearch'),
@@ -290,17 +292,38 @@ export class UI {
     this._renderBand();
   }
 
-  /** Band label plus, when weather is on and known, one glyph for conditions. */
+  /**
+   * "Climbing adds tension" (P3). Off by default and not persisted, like
+   * weather: without GPS altitude it sends rounded grid points to Open-Meteo.
+   */
+  hillsOn() {
+    return !!this.el.hillsOn?.checked;
+  }
+
+  /** The terrain reading (elevation.js shape), or null. An arrow on the band badge. */
+  setTerrain(t) {
+    const tr = describeTerrain(t);
+    const key = tr ? `${tr.glyph}|${tr.text}` : '';
+    if (key === this._terrainKey) return;   // called every replan; touch the DOM on change only
+    this._terrainKey = key;
+    this._terrain = tr;
+    this._renderBand();
+  }
+
+  /** Band label plus, when known, one glyph for the weather and an arrow for a climb. */
   _renderBand() {
     const badge = this.el.bandBadge;
     if (!badge) return;
     const wx = describeWeather(this._weather);
+    const tr = this._terrain || null;
     const band = this._band || badge.dataset.band || '\u2026';
     badge.dataset.band = band;
-    badge.textContent = wx ? `${band} ${wx.glyph}` : band;
-    badge.title = wx ? `Time of day shading \u00b7 ${wx.text}` : 'Time of day shading';
+    badge.textContent = [band, wx?.glyph, tr?.glyph].filter(Boolean).join(' ');
+    badge.title = ['Time of day shading', wx?.text, tr?.text].filter(Boolean).join(' \u00b7 ');
     if (wx) badge.dataset.weather = wx.text;
     else delete badge.dataset.weather;
+    if (tr) badge.dataset.terrain = tr.text;
+    else delete badge.dataset.terrain;
   }
 
   _bind() {
@@ -317,6 +340,9 @@ export class UI {
     });
     this.el.weatherOn?.addEventListener('change', () => {
       this.h.onWeather?.(this.weatherOn());
+    });
+    this.el.hillsOn?.addEventListener('change', () => {
+      this.h.onHills?.(this.hillsOn());
     });
 
     for (const btn of document.querySelectorAll('.segmented [data-mode]')) {

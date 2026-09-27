@@ -35,6 +35,7 @@ import {
 } from './themes/index.js';
 import { UI } from './ui.js';
 import { WeatherSource, weatherFactors } from './weather.js';
+import { ElevationSource } from './elevation.js';
 
 const REPLAN_MS = 1500;
 /** Fraction of a step the smoothed mood takes toward the target each replan. */
@@ -131,6 +132,10 @@ class App {
     this.weather = new WeatherSource({
       onChange: (w) => this.ui?.setWeather(w),
     });
+    // Hills (P3), off by default: fed every fix, read every replan. Uses GPS
+    // altitude when the fix has it, else Open-Meteo elevation (guarded,
+    // cached per 2-dp grid point, silent offline). Never awaited.
+    this.elevation = new ElevationSource();
 
     this.ui = new UI({
       onPower: () => this.togglePower(),
@@ -141,6 +146,7 @@ class App {
         ? 'Tempo follows your pace while you walk.'
         : 'Tempo back to the theme\u2019s own.'),
       onWeather: (on) => this.setWeather(on),
+      onHills: (on) => this.setHills(on),
       onMode: (mode) => this.setMode(mode),
       onSimSpeed: (mps) => this.geo.setSimSpeed(mps),
       onTheme: (id) => this.setTheme(id),
@@ -795,7 +801,7 @@ class App {
    * Factory state: forget the pack and every localStorage key the app owns,
    * uninstall imported themes, drop all cues (and the Android fences), and go
    * back to the default theme. Session-only settings — volume, ambience, pace
-   * lock, weather, where you are standing — are not stored and are left as they are.
+   * lock, weather, hills, where you are standing — are not stored and are left as they are.
    */
   resetEverything() {
     for (const spec of customSpecs()) removeCustom(spec.id);
@@ -879,12 +885,33 @@ class App {
     }
   }
 
+  /**
+   * The hills toggle (P3). On: start measuring from here. Off: forget the
+   * history and discard anything in flight; the tension glides back.
+   */
+  setHills(on) {
+    if (on) {
+      this.elevation.update(this.position);
+      this.ui.setStatus('Hills on \u2014 climbing adds tension. Without GPS altitude, grid points about 1 km apart go to Open-Meteo.');
+    } else {
+      this.elevation.disable();
+      this.ui.setTerrain(null);
+      this.ui.setStatus('Hills off.');
+    }
+  }
+
+  /** The terrain reading in use (elevation.js), or null with the toggle off. */
+  terrain() {
+    return this.ui.hillsOn() ? this.elevation.terrain() : null;
+  }
+
   /* --------------------------------------------------------------- position */
 
   onPosition(pos) {
     this.position = pos;
     this.scene.position = pos;   // `near` cues track you between lookups
     this.ui.setPosition(pos);
+    if (this.ui.hillsOn()) this.elevation.update(pos);   // fire-and-forget
     this.maybeFetchPlaces(pos);
     if (this.autoplayPending) {
       this.autoplayPending = false;
@@ -988,6 +1015,7 @@ class App {
       speed: this.position?.speed ?? 0,
       hour: new Date().getHours(),
       weather: this.ui.weatherOn() ? this.weather.current : null,
+      terrain: this.terrain(),
     });
     this.targetMood = mood;
     this.band = band;
@@ -1051,12 +1079,13 @@ class App {
     this.showPlayingTheme();
     if (this.playing) this.setHostScene(name);
 
+    this.ui.setTerrain(this.terrain());
     this.ui.setScene({
       name,
       meta: `${plan.meta.key} ${plan.meta.mode} · ${plan.meta.progression} · ${Math.round(plan.bpm)} bpm`,
       // The target mood, not the gliding one, so the words settle at once.
       why: whyLine(this.targetMood, this.analysis,
-        this.ui.weatherOn() ? this.weather.current : null),
+        this.ui.weatherOn() ? this.weather.current : null, this.terrain()),
       cues: this.activeCues
         .filter((c) => c.strength > 0.05)
         .map((c) => ({ name: c.name, strength: c.strength })),
