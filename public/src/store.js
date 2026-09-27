@@ -47,6 +47,32 @@ export function savePack(pack) {
 }
 
 /**
+ * First-run card (C4.4): a flag under the app's prefix, so clearStore()
+ * ("Reset everything") brings the card back. Storage that throws (private
+ * mode, blocked site data) reads as "not dismissed" — the card shows and the
+ * app carries on.
+ */
+const FIRST_RUN_KEY = 'gps-background-music/first-run-dismissed';
+
+export function firstRunDismissed() {
+  try {
+    return localStorage.getItem(FIRST_RUN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setFirstRunDismissed(dismissed) {
+  try {
+    if (dismissed) localStorage.setItem(FIRST_RUN_KEY, '1');
+    else localStorage.removeItem(FIRST_RUN_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Forget everything this app has stored in localStorage: the pack and any
  * other key under the app's prefix (so a flag added later is covered too).
  * Other sites' or other apps' keys on the same origin are left alone.

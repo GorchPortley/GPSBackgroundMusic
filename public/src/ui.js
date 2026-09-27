@@ -77,6 +77,11 @@ export class UI {
       pmTags: $('pmTags'),
       pmTagReset: $('pmTagReset'),
       pmResetAll: $('pmResetAll'),
+      pmFirstRun: $('pmFirstRun'),
+      firstRun: $('firstRun'),
+      firstRunTitle: $('firstRunTitle'),
+      firstRunExamples: $('firstRunExamples'),
+      firstRunDismiss: $('firstRunDismiss'),
       theme: $('theme'),
       themeNote: $('themeNote'),
       themeHeld: $('themeHeld'),
@@ -361,10 +366,38 @@ export class UI {
       if (ok) this.h.onResetEverything?.();
     });
 
+    this.el.pmFirstRun.addEventListener('click', () => this.h.onFirstRunShow?.());
+    this.el.firstRunDismiss.addEventListener('click', () => this.h.onFirstRunDismiss?.());
+    this.el.firstRunExamples.addEventListener('click', () => {
+      const sel = this.el.examplePacks;
+      sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      sel.focus({ preventScroll: true });
+    });
+
     this.el.pasteCancel.addEventListener('click', () => this.hidePaste());
     this.el.pasteApply.addEventListener('click', () => {
       this.h.onPastePack?.(this.el.pasteArea.value);
     });
+  }
+
+  /**
+   * First-run card (C4.4). Inline, not modal: Play and everything else stay
+   * usable while it is up. It takes focus only when asked for from the pack
+   * manager ("Show again"); on first launch it waits to be read. Dismissing
+   * hands focus to Play, the next thing to do, so it is never lost to <body>.
+   */
+  showFirstRun({ focus = false } = {}) {
+    this.el.firstRun.hidden = false;
+    if (focus) {
+      this.el.firstRun.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      this.el.firstRunTitle.focus({ preventScroll: true });
+    }
+  }
+
+  hideFirstRun() {
+    const hadFocus = this.el.firstRun.contains(document.activeElement);
+    this.el.firstRun.hidden = true;
+    if (hadFocus) this.el.power.focus();
   }
 
   hidePaste() {

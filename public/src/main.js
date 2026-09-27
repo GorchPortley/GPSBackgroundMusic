@@ -19,7 +19,8 @@ import {
   categoryFor, clearTagOverride, getTagOverrides, setTagOverride, setTagOverrides,
 } from './tags.js';
 import {
-  clearStore, downloadPack, emptyPack, loadPack, readPackFile, sanitise, savePack,
+  clearStore, downloadPack, emptyPack, firstRunDismissed, loadPack, readPackFile, sanitise,
+  savePack, setFirstRunDismissed,
 } from './store.js';
 import * as provider from './provider.js';
 import { buildScene, emptyScene } from './scenecontext.js';
@@ -156,6 +157,14 @@ class App {
       onThemeRemove: (id) => this.removeTheme(id),
       onTagResetAll: () => this.resetAllTags(),
       onResetEverything: () => this.resetEverything(),
+      onFirstRunDismiss: () => {
+        setFirstRunDismissed(true);
+        this.ui.hideFirstRun();
+      },
+      onFirstRunShow: () => {
+        setFirstRunDismissed(false);
+        this.ui.showFirstRun({ focus: true });
+      },
       onCueCancel: () => { this.cueDraft = null; },
       onExportPack: () => this.exportPack(),
       onImportPack: (file) => this.importPack(file),
@@ -197,6 +206,7 @@ class App {
     this.renderCueList();
     this.ui.refreshThemes(this.theme.id);
     this.renderPackManager();
+    if (!firstRunDismissed()) this.ui.showFirstRun();
     this.applyVolume();
 
     this.loadConfig();

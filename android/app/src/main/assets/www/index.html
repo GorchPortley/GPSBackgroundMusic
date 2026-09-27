@@ -105,6 +105,20 @@
     </div>
     <p class="theme-note" id="themeNote"></p>
     <p class="theme-held" id="themeHeld" hidden></p>
+
+    <!-- First-run card (C4.4): shown until dismissed. Below Play, never over it. -->
+    <section class="first-run" id="firstRun" aria-labelledby="firstRunTitle" hidden>
+      <h3 id="firstRunTitle" tabindex="-1">Welcome</h3>
+      <ul class="first-run-lines">
+        <li>This composes music from the places around you &mdash; caf&eacute;s, parks, stations &mdash; and it changes as you move.</li>
+        <li>Press <strong>Play</strong> above to start. Explore lets you stand anywhere without going there.</li>
+        <li>Not sure where to begin? Try an example pack from <strong>Load an example&hellip;</strong> under Anywhere.</li>
+      </ul>
+      <div class="first-run-actions">
+        <button type="button" id="firstRunExamples" class="mini">Show the examples</button>
+        <button type="button" id="firstRunDismiss" class="mini primary">Got it</button>
+      </div>
+    </section>
   </section>
 
   <!-- ----------------------------------------------------------- explore -->
@@ -200,6 +214,10 @@
         <button type="button" id="pmTagReset" class="mini">Reset all tag edits</button>
       </div>
       <p class="hint">Saved places and cues are removed from their own lists above.</p>
+      <div class="pm-row">
+        <span>Welcome card</span>
+        <button type="button" id="pmFirstRun" class="mini">Show again</button>
+      </div>
       <div class="pm-row">
         <button type="button" id="pmResetAll" class="mini danger">Reset everything…</button>
       </div>

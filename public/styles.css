@@ -933,3 +933,48 @@ select.overridden {
 .pm-row .mini:disabled { opacity: 0.5; cursor: default; }
 .mini.danger { color: var(--danger); border-color: #4a2230; flex: 1; text-align: center; }
 .mini.danger:hover { color: #ffb0b0; border-color: #6a2a3a; }
+
+/* --------------------------------------------------------- first-run card */
+/* C4.4: sits in the controls panel under Play, never over it, so Play stays
+   on the first screen of a phone. */
+
+.first-run {
+  margin-top: 14px;
+  padding: 13px 14px;
+  border-radius: 10px;
+  background: #0d1520;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+}
+
+.first-run h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.first-run h3:focus { outline: none; }
+.first-run h3:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+
+.first-run-lines {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.first-run-lines strong { color: var(--text); font-weight: 600; }
+
+.first-run-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.mini.primary { color: var(--accent); border-color: #1f4a44; }
+.mini.primary:hover { color: var(--text); border-color: var(--accent); }
