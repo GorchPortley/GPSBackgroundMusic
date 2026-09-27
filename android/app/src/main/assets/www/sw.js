@@ -12,7 +12,7 @@
  *      rather than going silent.
  */
 
-const VERSION = 'v15';
+const VERSION = 'v16';
 const SHELL = `shell-${VERSION}`;
 const PLACES = `places-${VERSION}`;
 
@@ -41,6 +41,7 @@ const SHELL_FILES = [
   '/src/themes/index.js',
   '/src/themes/spec.js',
   '/src/themes/pattern.js',
+  '/src/themes/melody.js',
   '/src/themes/cues.js',
   '/src/themes/match.js',
   '/src/themes/util.js',

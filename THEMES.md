@@ -143,7 +143,8 @@ dark modes so an overworld tune never turns funereal.
 |---|---|
 | `name` | Used for the level; must be unique. `drone` and `air` are reserved |
 | `voice` | See the voice table below |
-| `pattern` | The loop, in mini-notation |
+| `pattern` | The loop, in mini-notation. A layer has `pattern` **or** `generate`, never both |
+| `generate` | Instead of `pattern`: a melody composed for the place (below). Pitched or chordal voices only |
 | `fill` | Optional. A second pattern played *instead of* `pattern` in the last bar before a theme, key or chord change lands — a drum fill into the new section. Code themes can do the same with `pos.stepsToCommit` (steps until the change, set only while one is waiting) |
 | `octave` | Octaves above the tonic. `0` is bass, `2` mid, `3–4` melody |
 | `gain` | Loudness of this layer. Defaults per voice |
@@ -153,6 +154,37 @@ dark modes so an overworld tune never turns funereal.
 | `params` | Extra voice parameters (below), each a constant or `[min,max,dim]` |
 | `humanise` | Timing scatter in seconds. Default `0.004`; `0` for machine-tight |
 | `breath` | Optional `true`/`false`: does this layer rest in the breath bar (see `form`)? Defaults to `true` for percussion voices, `false` for the rest. If the breath bar is also a `fill` bar, a layer with a `fill` plays its fill |
+
+### Generated melodies
+
+Write `generate` instead of `pattern` and the layer composes its own tune — a
+different one in every place, the same one every time you stand in the same
+place, and always in key:
+
+```js
+{ name: 'lead', voice: 'flute', octave: 3,
+  generate: {
+    kind: 'markov',              // the only kind so far; may be left out
+    density: [0.3, 0.7, 'd'],    // 0–1: chance an off-beat 16th may sound (8ths always may). Default 0.45
+    range: [0, 9],               // lowest and highest scale degree above the tonic. Default [0, 9]
+    leap: [0.1, 0.5, 't'],       // 0–1: chance a move jumps 3–5 degrees instead of 1–2. Default 0.2
+    rest: 0.35,                  // 0–1: chance any step is left silent. Default 0.35
+    contour: [-1, 1, 'b'],       // -1…1: tends to fall … tends to climb. Default 0
+  } }
+```
+
+Every number may follow the mood, like any other spec number (each end of
+`range` too). The tune is a walk over scale degrees, one bar at a time: each
+note steps or leaps from the last, bounces back off the ends of `range`, and
+on beats 1 and 3 (steps 0 and 8) moves to the nearest note of the current
+chord. The first step of a new chord always plays. The walk is seeded by the
+place, the bar number and the layer's `name`, so two generated layers in one
+theme play different lines. A bar is fixed once it starts: the mood gliding
+underneath changes the next bar, not the one you are hearing.
+
+`fill` and `breath` work as on any layer: a `fill` pattern replaces the
+generated bar before a change lands, and a generated layer plays through the
+breath bar unless it says `breath: true`.
 
 ---
 

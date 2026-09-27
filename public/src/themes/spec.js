@@ -22,7 +22,7 @@
  */
 
 import {
-  chordNotes, mulberry32, noteName, pickMode, pickProgression, scaleNote,
+  SCALES, chordNotes, mulberry32, noteName, pickMode, pickProgression, scaleNote,
 } from '../audio/theory.js';
 import {
   bassVoice, bellVoice, blipVoice, brush, clank, fluteVoice, fmVoice, hat, kick,
@@ -32,6 +32,7 @@ import {
 import { parsePattern, queryPattern, readValue } from './pattern.js';
 import { matchStrength, validateCondition } from './match.js';
 import { breathing, gate, quantise, rnd } from './util.js';
+import { markovBar } from './melody.js';
 
 const STEPS_PER_BAR = 16;
 
@@ -135,8 +136,22 @@ export function validateSpec(spec) {
       errors.push(`${where}: unknown voice "${layer.voice}". ` +
         `Available: ${Object.keys(VOICES).join(', ')}.`);
     }
-    if (typeof layer.pattern !== 'string' || !layer.pattern.trim()) {
-      errors.push(`${where}: missing "pattern".`);
+    // A layer is written out (`pattern`) or generated (`generate`, C3.8) —
+    // exactly one of the two.
+    if (layer.generate !== undefined) {
+      if (layer.pattern !== undefined) {
+        errors.push(`${where}: has both "pattern" and "generate" — use one.`);
+      }
+      const gen = checkGenerate(layer.generate, `${where}: generate`);
+      errors.push(...gen.errors);
+      warnings.push(...gen.warnings);
+      const genKind = VOICES[layer.voice]?.kind;
+      if (genKind && genKind !== 'pitched' && genKind !== 'chordal') {
+        errors.push(`${where}: "generate" makes a melody, so it needs a pitched ` +
+          `or chordal voice, not "${layer.voice}".`);
+      }
+    } else if (typeof layer.pattern !== 'string' || !layer.pattern.trim()) {
+      errors.push(`${where}: missing "pattern" (or "generate").`);
     } else {
       errors.push(...checkPattern(layer.pattern, `${where}: pattern`));
     }
@@ -216,6 +231,61 @@ function checkPattern(text, label) {
   return bad ? [`${label} — unrecognised value "${bad}".`] : [];
 }
 
+/** Is this a spec number: a finite constant or a [min, max, dim?] ramp? */
+function numError(v, label) {
+  if (typeof v === 'number') return Number.isFinite(v) ? null : `${label} must be a finite number.`;
+  if (Array.isArray(v)) {
+    const [min, max, dim] = v;
+    if (v.length < 2 || v.length > 3 || !Number.isFinite(min) || !Number.isFinite(max)) {
+      return `${label} — a [min, max, dimension] ramp needs two numbers.`;
+    }
+    if (dim !== undefined && !(typeof dim === 'string' && dim.length === 1 && 'ebdtws'.includes(dim))) {
+      return `${label} — "${dim}" is not a mood dimension (e, b, d, t, w, s).`;
+    }
+    return null;
+  }
+  return `${label} must be a number or [min, max, dimension].`;
+}
+
+const GENERATE_KEYS = ['kind', 'density', 'range', 'leap', 'rest', 'contour'];
+/** Degrees a generated melody may span, either side of the tonic. */
+const GENERATE_MAX_DEGREE = 28;
+
+/** Check a layer's `generate` block (C3.8). Returns `{ errors, warnings }`. */
+function checkGenerate(gen, label) {
+  const errors = [];
+  const warnings = [];
+  if (!gen || typeof gen !== 'object' || Array.isArray(gen)) {
+    return { errors: [`${label} must be an object, e.g. { "kind": "markov" }.`], warnings };
+  }
+  if (gen.kind !== undefined && gen.kind !== 'markov') {
+    errors.push(`${label}.kind — only "markov" is available.`);
+  }
+  for (const k of ['density', 'leap', 'rest', 'contour']) {
+    if (gen[k] === undefined) continue;
+    const e = numError(gen[k], `${label}.${k}`);
+    if (e) errors.push(e);
+  }
+  if (gen.range !== undefined) {
+    if (!Array.isArray(gen.range) || gen.range.length !== 2) {
+      errors.push(`${label}.range must be [low, high] in scale degrees, e.g. [0, 9].`);
+    } else {
+      gen.range.forEach((v, i) => {
+        const e = numError(v, `${label}.range[${i}]`);
+        if (e) { errors.push(e); return; }
+        const ends = typeof v === 'number' ? [v] : v.slice(0, 2);
+        if (ends.some((n) => Math.abs(n) > GENERATE_MAX_DEGREE)) {
+          errors.push(`${label}.range[${i}] — keep within ±${GENERATE_MAX_DEGREE} degrees.`);
+        }
+      });
+    }
+  }
+  for (const k of Object.keys(gen)) {
+    if (!GENERATE_KEYS.includes(k)) warnings.push(`${label}: unknown field "${k}" is ignored.`);
+  }
+  return { errors, warnings };
+}
+
 /* ------------------------------------------------------------------ layers */
 
 /**
@@ -225,13 +295,52 @@ function checkPattern(text, label) {
 export function compileLayers(specLayers) {
   return (specLayers || []).map((layer) => {
     const fill = typeof layer.fill === 'string' ? parsePattern(layer.fill) : null;
+    const generated = !!layer.generate && typeof layer.generate === 'object';
     return {
       ...layer,
-      node: parsePattern(layer.pattern),
+      // A generated layer has no loop; its events come from generatedEvents().
+      node: generated ? null : parsePattern(layer.pattern),
       fillNode: fill && fill.type !== 'error' ? fill : null,
       def: VOICES[layer.voice],
+      genCache: null,
     };
-  }).filter((layer) => layer.def && layer.node.type !== 'error');
+  }).filter((layer) => layer.def && (layer.node ? layer.node.type !== 'error' : layer.generate));
+}
+
+/**
+ * One bar of a `generate` layer (C3.8), in the shape queryPattern returns.
+ *
+ * Cached on the compiled layer per bar (and seed), so the notes are fixed
+ * for the whole bar even though the plan — and with it the mood that the
+ * `generate` numbers follow — is replaced every replan tick. A new bar, or a
+ * new place's seed arriving with a committed change, draws a fresh bar.
+ */
+export function generatedEvents(layer, plan, bar) {
+  const c = layer.genCache;
+  if (c && c.bar === bar && c.seed === plan.seed) return c.events;
+
+  const g = layer.generate;
+  const mood = plan.mood || {};
+  const unit = (v, fallback) => Math.min(1, Math.max(0, num(v, mood, fallback)));
+  const [lo, hi] = Array.isArray(g.range) ? g.range : [0, 9];
+  const chordIndex = Math.floor(bar / plan.barsPerChord) % plan.progression.length;
+
+  const events = markovBar({
+    seed: plan.seed >>> 0,
+    bar,
+    name: layer.name || layer.voice,
+    chordDegree: plan.progression[chordIndex],
+    chordChange: bar % plan.barsPerChord === 0,
+    scaleLength: (SCALES[plan.scale] || SCALES.aeolian).length,
+    density: unit(g.density, 0.45),
+    leap: unit(g.leap, 0.2),
+    rest: unit(g.rest, 0.35),
+    contour: Math.min(1, Math.max(-1, num(g.contour, mood, 0))),
+    lo: num(lo, mood, 0),
+    hi: num(hi, mood, 9),
+  });
+  layer.genCache = { bar, seed: plan.seed, events };
+  return events;
 }
 
 /**
@@ -263,6 +372,11 @@ export function resolveLevels(layers, mood, scene) {
  * wins for the layers that have one — the handover matters more than the
  * air — and the other eligible layers still rest. Cue layers go through here
  * too, so they breathe with whatever theme they sit on.
+ *
+ * Generated layers (C3.8, `generate`) are ordinary layers here: a `fill`
+ * replaces the generated bar exactly as it replaces a loop, and breath
+ * follows the same rule — being pitched, they play through the breath bar
+ * unless they say `breath: true`.
  */
 export function stepLayers(io, plan, pos, layers, levels) {
   const { stepInBar, bar, time, stepDur, barDur, stepsToCommit } = pos;
@@ -281,7 +395,8 @@ export function stepLayers(io, plan, pos, layers, levels) {
     const filling = finalBar && layer.fillNode;
     if (breath && !filling && (layer.breath ?? layer.def.kind === 'unpitched')) continue;
     const node = filling ? layer.fillNode : layer.node;
-    for (const ev of queryPattern(node, bar)) {
+    const events = node ? queryPattern(node, bar) : generatedEvents(layer, plan, bar);
+    for (const ev of events) {
       const exact = ev.begin * STEPS_PER_BAR;
       if (Math.floor(exact + 1e-9) !== stepInBar) continue;
 

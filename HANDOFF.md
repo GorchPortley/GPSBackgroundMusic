@@ -103,8 +103,9 @@ browser; Node built-ins on the server. ~9,600 lines total.
 | `public/src/audio/worklets/ks.js` | Karplus–Strong string processor (AudioWorklet, loaded in `engine.start()`) | registers `karplus-strong` |
 | `public/src/audio/theory.js` | Scales, modes, progressions, seeded RNG | `scaleNote`, `chordNotes`, `pickMode`, `mulberry32`, `hashString` |
 | `public/src/themes/index.js` | Theme registry, custom spec registration | `getTheme`, `allThemes`, `registerSpecs`, `customSpecs`, `removeCustom` |
-| `public/src/themes/spec.js` | Declarative theme format → theme | `VOICES`, `validateSpec`, `themeFromSpec`, `stepLayers` |
+| `public/src/themes/spec.js` | Declarative theme format → theme | `VOICES`, `validateSpec`, `themeFromSpec`, `stepLayers`, `generatedEvents` |
 | `public/src/themes/pattern.js` | Mini-notation parser and query | `parsePattern`, `queryPattern`, `readValue` |
+| `public/src/themes/melody.js` | Generated melody (C3.8): seeded Markov walk for a layer's `generate` | `markovBar`, `barRng` |
 | `public/src/themes/cues.js` | Place-bound loops and theme pins | `compileCues`, `evaluateCues`, `pinnedTheme`, `withCues` |
 | `public/src/themes/match.js` | Cue conditions → strength | `matchStrength`, `validateCondition`, `describeCondition` |
 | `public/src/themes/{wanderer,fantasy,scifi,videogame,noir}.js` | Code themes | one theme object each |
@@ -713,9 +714,10 @@ brightness controlling contour.
 **Where.** `spec.js` (`validateSpec`: `pattern` XOR `generate`; `compileLayers`;
 `stepLayers` calls a `generatedEvents(layer, plan, bar)` cached per `(bar)`
 in the layer), new `public/src/themes/melody.js` with the algorithm, THEMES.md §2.
-**Spec.** `generate: { kind: "markov", density: 0.45 | ["d", 0.3, 0.7],
-range: [0, 9], leap: 0.2 | ["t", 0.1, 0.5], rest: 0.35, contour: 0 |
-["b", -1, 1] }` — every number may be a mood expression like other spec numbers.
+**Spec.** `generate: { kind: "markov", density: 0.45 | [0.3, 0.7, "d"],
+range: [0, 9], leap: 0.2 | [0.1, 0.5, "t"], rest: 0.35, contour: 0 |
+[-1, 1, "b"] }` — every number may be a mood expression like other spec
+numbers (`[min, max, dim]`, resolved by `num()`).
 **Algorithm** (deterministic — `rng = mulberry32(plan.seed ^ (bar * 2654435761
 >>> 0) ^ hashString(layer.name))`):
 1. For each of 16 steps: skip with probability `rest` unless it is step 0 of
