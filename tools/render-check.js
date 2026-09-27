@@ -7,15 +7,14 @@
  * exercised. Run it after touching anything in public/src/audio/ or after
  * writing a theme.
  *
- * USAGE (browser, dev server running):
- *   1. cp tools/render-check.js public/dev-render.js
- *      (and cp examples/<pack>.json public/<pack>.json if checking a pack)
- *   2. In the page console:
+ * USAGE (browser, dev server started with DEV_TOOLS=1, which serves tools/
+ * at /tools/ and examples/ at /examples/ — nothing is copied into public/):
+ *   1. In the page console:
  *        const s = document.createElement('script'); s.type = 'module';
- *        s.src = '/dev-render.js?pack=/landmarks.json'; document.head.appendChild(s);
+ *        s.src = '/tools/render-check.js?pack=/examples/landmarks.json';
+ *        document.head.appendChild(s);
  *      Omit ?pack= to render the built-in code themes instead.
- *   3. Poll window.__R until .state === 'done', then read .rows.
- *   4. rm public/dev-render.js public/<pack>.json   ← do not ship these.
+ *   2. Poll window.__R until .state === 'done', then read .rows.
  *
  * PASS CRITERIA:  nan === 0 and clipped === 0 on every row, no row silent,
  *                 and peaks within about 4 dB of each other across themes

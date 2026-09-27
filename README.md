@@ -390,6 +390,11 @@ public/
       fantasy.js  strings, rolled harp, flute
       noir.js     swing, walking bass
       presets/overworld.js  loop-driven spec example
+tools/
+  render-check.js  offline level/NaN check of every theme
+  jump-test.js     end-to-end cue/pin timing check
+                   (served at /tools/… only when the server runs with DEV_TOOLS=1,
+                   along with examples/*.json at /examples/… — never copied into public/)
 ```
 
 `window.gpsMusic` is exposed for debugging — inspect `currentMood`, `analysis`,

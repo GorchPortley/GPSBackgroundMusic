@@ -23,6 +23,15 @@ const PORT = Number(process.env.PORT || 8787);
 const RADIUS = clamp(Number(process.env.PLACES_RADIUS || 350), 50, 5000);
 
 /**
+ * DEV_TOOLS=1 serves tools/*.js at /tools/… and examples/*.json at
+ * /examples/…, so the verification harnesses never have to be copied into
+ * public/ (and from there into the APK). Off by default.
+ */
+const DEV_TOOLS = process.env.DEV_TOOLS === '1';
+const TOOLS_DIR = join(ROOT, 'tools');
+const EXAMPLES_DIR = join(ROOT, 'examples');
+
+/**
  * Set HTTPS=0 to force plain HTTP even when a certificate exists. Needed when
  * something else terminates TLS in front of this server — `tailscale serve`,
  * a tunnel, a reverse proxy — since those expect a plain HTTP backend.
@@ -73,6 +82,12 @@ const handler = async (req, res) => {
     if (url.pathname === '/api/config') return handleConfig(res);
     if (url.pathname === '/api/places') return await handlePlaces(url, res);
     if (url.pathname === '/api/geocode') return await handleGeocode(url, res);
+    if (DEV_TOOLS && url.pathname.startsWith('/tools/')) {
+      return await serveDevFile(TOOLS_DIR, url.pathname.slice('/tools/'.length), '.js', res);
+    }
+    if (DEV_TOOLS && url.pathname.startsWith('/examples/')) {
+      return await serveDevFile(EXAMPLES_DIR, url.pathname.slice('/examples/'.length), '.json', res);
+    }
     return await serveStatic(url.pathname, res);
   } catch (err) {
     console.error(`[error] ${url.pathname}:`, err);
@@ -193,6 +208,38 @@ async function serveStatic(pathname, res) {
 
   res.writeHead(200, {
     'Content-Type': MIME[extname(filePath).toLowerCase()] || 'application/octet-stream',
+    'Cache-Control': 'no-cache',
+  });
+  res.end(body);
+}
+
+/**
+ * DEV_TOOLS only: one file of type `ext` from `dir`, with the same traversal
+ * guard as serveStatic. Anything outside `dir` or of another type is a 404.
+ */
+async function serveDevFile(dir, rel, ext, res) {
+  let filePath;
+  try {
+    filePath = resolve(join(dir, decodeURIComponent(rel)));
+  } catch {
+    filePath = null;
+  }
+  if (!filePath || !filePath.startsWith(dir + sep) ||
+      extname(filePath).toLowerCase() !== ext) {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    return res.end('Not found');
+  }
+
+  let body;
+  try {
+    body = await readFile(filePath);
+  } catch {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    return res.end('Not found');
+  }
+
+  res.writeHead(200, {
+    'Content-Type': MIME[ext],
     'Cache-Control': 'no-cache',
   });
   res.end(body);
