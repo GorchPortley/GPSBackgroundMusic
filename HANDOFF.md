@@ -159,7 +159,8 @@ in the console.
 ### 3.4 Continuous vs discrete plan fields
 Continuous fields (bpm, fx, timbre, trim, layer levels) take effect at once
 via `setTargetAtTime` in `_applyContinuous`; `ambience` is continuous too,
-folded into the ambience levels by main.js (`updateAmbience` → `setAmbience`). Discrete fields (`themeId`,
+folded into the ambience levels by main.js (`updateAmbience` → `setAmbience`);
+so is `cuePans` (spatial cues, C3.5), glided on per-cue panners by `_applyCuePans`. Discrete fields (`themeId`,
 `root`, `scale`, `progression`, `barsPerChord`) wait for a phrase boundary —
 see `isDiscreteChange` at the bottom of engine.js. **If you add a plan field,
 decide which bucket it is in and wire it accordingly.** Cue membership is

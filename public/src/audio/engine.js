@@ -35,6 +35,17 @@ const REVERB_CROSSFADE_S = 3.0;
  */
 const AMBIENCE_BUS = 0.033;
 
+/**
+ * Spatial cues (cues.js `spatial: true`): each gets its own StereoPannerNode
+ * into the dry bus, and its pan glides with this time constant between
+ * replans rather than jumping per note. A panner whose cue has been gone from
+ * every live plan this long is disconnected — long enough for the last notes'
+ * tails to finish.
+ */
+const CUE_PAN_TC = 0.8;
+const CUE_PAN_MAX = 0.7;
+const CUE_PANNER_GRACE_S = 20;
+
 export class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -59,6 +70,9 @@ export class AudioEngine {
     this._reverbCache = new Map();
     this._reverbSlot = 'a';
     this._reverbSeconds = 0;
+
+    /** Spatial cue name → { node: StereoPannerNode, seen: ctx time }. */
+    this._cuePanners = new Map();
   }
 
   /* ----------------------------------------------------------- lifecycle */
@@ -286,6 +300,8 @@ export class AudioEngine {
       delay: this.delayBus,
       noiseBuffer: this.noiseBuffer,
       hasWorklets: !!this.hasWorklets,
+      // A spatial cue's own panner (or null, meaning "use dry"); see _applyCuePans.
+      cueOut: (name) => this._cuePanners.get(name)?.node ?? null,
     };
   }
 
@@ -487,6 +503,56 @@ export class AudioEngine {
     set(this.airGain.gain, plan.layers.air);
     set(this.airFilter.frequency, plan.timbre.airCutoff, 3.5);
     set(this.airFilter.Q, plan.timbre.airQ ?? 0.9, 3);
+
+    this._applyCuePans(plan);
+  }
+
+  /**
+   * `plan.cuePans` — [{ name, pan }] for spatial cues — is continuous: each
+   * cue's panner glides to its new pan now. Panners are made on first sight
+   * and disconnected once no live plan (this one, the sounding one, or the one
+   * waiting for a boundary) has mentioned the cue for CUE_PANNER_GRACE_S.
+   */
+  _applyCuePans(plan) {
+    const ctx = this.ctx;
+    if (!ctx.createStereoPanner) return;
+    const now = ctx.currentTime;
+
+    for (const { name, pan } of plan.cuePans || []) {
+      const p = Math.max(-CUE_PAN_MAX, Math.min(CUE_PAN_MAX, Number.isFinite(pan) ? pan : 0));
+      let entry = this._cuePanners.get(name);
+      if (!entry) {
+        // New: start where it should be. The cue fades in from silence anyway.
+        const node = ctx.createStereoPanner();
+        node.pan.value = p;
+        node.connect(this.dry);
+        entry = { node, seen: now };
+        this._cuePanners.set(name, entry);
+      } else {
+        entry.node.pan.setTargetAtTime(p, now, CUE_PAN_TC);
+      }
+      entry.seen = now;
+    }
+
+    // Plans still being stepped keep their panners alive too.
+    for (const live of [this.plan, this._pending?.plan]) {
+      for (const { name } of live?.cuePans || []) {
+        const entry = this._cuePanners.get(name);
+        if (entry) entry.seen = now;
+      }
+    }
+
+    for (const [name, entry] of this._cuePanners) {
+      if (now - entry.seen > CUE_PANNER_GRACE_S) {
+        entry.node.disconnect();
+        this._cuePanners.delete(name);
+      }
+    }
+  }
+
+  /** Debug: live spatial-cue panners, name → current pan. */
+  cuePanStats() {
+    return Object.fromEntries([...this._cuePanners].map(([name, { node }]) => [name, node.pan.value]));
   }
 
   /** Take on the parts that can only change at a musical seam. */

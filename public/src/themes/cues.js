@@ -19,6 +19,7 @@
 
 import { compileLayers, resolveLevels, stepLayers, validateSpec } from './spec.js';
 import { matchStrength, validateCondition, describeCondition } from './match.js';
+import { bearing, haversine } from '../geo.js';
 
 /** How quickly a cue fades in and out as you approach. Seconds-ish. */
 const CUE_SMOOTHING = 0.25;
@@ -33,6 +34,16 @@ const CUE_SMOOTHING = 0.25;
  */
 const PIN_ON = 0.55;
 const PIN_OFF = 0.32;
+
+/**
+ * Spatial cues (`spatial: true` with a `when.near`): how far a place dead to
+ * one side pans, and the speed below which heading is noise. Standing still
+ * — or right on top of the centre, where the bearing spins — holds the last
+ * pan instead of chasing it.
+ */
+const SPATIAL_MAX_PAN = 0.7;
+const SPATIAL_MIN_SPEED = 0.5;   // m/s
+const SPATIAL_MIN_DIST = 3;      // metres
 
 export function validateCue(cue, index = 0) {
   const errors = [];
@@ -54,6 +65,9 @@ export function validateCue(cue, index = 0) {
       const check = validateSpec({ id: 'cue', name: cue.name, layers: cue.layers });
       errors.push(...check.errors.map((e) => `${where}: ${e}`));
     }
+  }
+  if (cue.spatial !== undefined && typeof cue.spatial !== 'boolean') {
+    errors.push(`${where}: "spatial" must be true or false.`);
   }
   if (cue.theme !== undefined && typeof cue.theme !== 'string') {
     errors.push(`${where}: "theme" must be a theme id.`);
@@ -89,6 +103,10 @@ export function compileCues(cues) {
       strength: 0,
       // Whether this cue currently holds the theme (see pinnedTheme).
       pinned: false,
+      // Pan toward the place (see spatialPan). Only for `near` cues: nothing
+      // else has one centre to point at.
+      spatial: cue.spatial === true && !!cue.when?.near,
+      pan: 0,
     });
     report.push({ name: cue.name, ok: true, description: describeCondition(cue.when) });
   });
@@ -139,9 +157,15 @@ export function pinnedTheme(activeCues) {
  * The result satisfies the same `{ plan, step }` contract, so the engine —
  * which insists a plan and its step function travel together — is unaffected.
  */
-export function withCues(theme, activeCues) {
+export function withCues(theme, activeCues, position = null) {
   const withLayers = activeCues.filter((c) => c.layers.length);
   if (!withLayers.length) return theme;
+
+  // Spatial pans are worked out once per replan, not per plan() call, and
+  // held on the cue so standing still keeps the last one.
+  for (const cue of withLayers) {
+    if (cue.spatial) cue.pan = spatialPan(cue, position);
+  }
 
   return {
     ...theme,
@@ -170,6 +194,10 @@ export function withCues(theme, activeCues) {
         trim,
         cueLevels,
         cueNames: withLayers.map((c) => c.name),
+        // Continuous: the engine glides each spatial cue's own panner here
+        // (engine.js _applyCuePans). A list rather than an object keyed by
+        // name, because names come from packs.
+        cuePans: withLayers.filter((c) => c.spatial).map((c) => ({ name: c.name, pan: c.pan })),
       };
     },
     step(io, plan, pos) {
@@ -181,8 +209,30 @@ export function withCues(theme, activeCues) {
           const key = layer.name || layer.voice;
           levels[key] = plan.cueLevels?.[`${cue.name}/${key}`] ?? 0;
         }
-        stepLayers(io, plan, pos, cue.layers, levels);
+        // A spatial cue's voices play into its own panner instead of the dry
+        // bus, so the whole loop moves together and glides between replans.
+        // Sends stay central: the room is all around you either way.
+        const out = cue.spatial ? io.cueOut?.(cue.name) : null;
+        stepLayers(out ? { ...io, dry: out } : io, plan, pos, cue.layers, levels);
       }
     },
   };
+}
+
+/**
+ * Pan for a spatial cue: sin(bearing to the place − heading) × 0.7, so a
+ * place dead ahead or behind is centred and one abeam is 0.7 to that side.
+ * Heading only means something while moving, so below 0.5 m/s (or within a
+ * few metres of the centre) the last pan is held.
+ */
+export function spatialPan(cue, position) {
+  const centre = cue.when?.near;
+  if (!position || !centre) return cue.pan;
+  const { lat, lng, speed, heading } = position;
+  if (!(speed > SPATIAL_MIN_SPEED) || !Number.isFinite(heading)) return cue.pan;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return cue.pan;
+  if (haversine(lat, lng, centre.lat, centre.lng) < SPATIAL_MIN_DIST) return cue.pan;
+  const rel = (bearing(lat, lng, centre.lat, centre.lng) - heading) * Math.PI / 180;
+  const pan = Math.sin(rel) * SPATIAL_MAX_PAN;
+  return Math.max(-SPATIAL_MAX_PAN, Math.min(SPATIAL_MAX_PAN, pan));
 }

@@ -361,7 +361,32 @@ the strongest thing present, so `1.0` means "this defines where you are".
   own genre. Takes over once the cue passes half strength, and releases as you
   leave.
 
+- **`spatial`** — `true` makes a `near` cue's loops come *from the place*: the
+  market to your left, its chimes on your left. Default `false`.
+
 Both together is fine: pin Noir at the record shop *and* add a bell.
+
+```json
+{
+  "name": "Market chimes",
+  "when": { "near": { "lat": …, "lng": …, "radius": 150 } },
+  "spatial": true,
+  "layers": [ { "name": "chime", "voice": "bell", "pattern": "0 ~ 4 ~" } ]
+}
+```
+
+How `spatial` behaves:
+
+- Pan is `sin(bearing to the place − your heading) × 0.7`: dead ahead or
+  behind is centred, straight to one side is 0.7 that way — never hard left
+  or right. Walk past and the loop sweeps across.
+- It only updates while you are moving faster than 0.5 m/s (a heading means
+  nothing standing still), so stopping freezes the pan where it was.
+- The whole cue moves together through its own panner and glides between
+  updates — it never jumps from one note to the next. Echoes and reverb stay
+  around you; only the direct sound points.
+- Only a top-level `when.near` has a single spot to point at. On any other
+  condition `spatial` is ignored.
 
 ### Which cues are firing
 

@@ -113,13 +113,18 @@ export function sanitise(input) {
   //
   // `_ui: true` marks a cue made in the in-app editor, which is what lets the
   // editor offer to change it. Allowed only as exactly `true`; anything else
-  // under that key is dropped.
+  // under that key is dropped. `spatial` likewise survives only as a boolean.
   if (Array.isArray(input.cues)) {
     for (let cue of input.cues.slice(0, MAX_CUES)) {
       if (!cue || typeof cue !== 'object' || Array.isArray(cue)) continue;
       if (typeof cue.name !== 'string' || !cue.name || cue.name.length > 80) continue;
       if ('_ui' in cue && cue._ui !== true) {
         const { _ui, ...rest } = cue;
+        cue = rest;
+      }
+      // `spatial` (pan toward a `near` cue's place) is a plain boolean or gone.
+      if ('spatial' in cue && typeof cue.spatial !== 'boolean') {
+        const { spatial, ...rest } = cue;
         cue = rest;
       }
       if (cue.when && typeof cue.when === 'object') {

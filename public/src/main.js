@@ -827,7 +827,8 @@ class App {
     this.ui.setCueStrengths(this.cues.map((c) => c.strength));
     const pin = pinnedTheme(this.activeCues);
     const base = pin ? getTheme(pin.id) : this.theme;
-    const composed = withCues(base, this.activeCues);
+    // Position (with speed and heading) lets `spatial` cues pan toward their place.
+    const composed = withCues(base, this.activeCues, this.position);
 
     const seed = hashString(`${base.id}:${key}`);
     // themeId travels with the plan so the engine can keep the two in step.
