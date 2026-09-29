@@ -238,7 +238,7 @@ the link is.
   too; the panel names every one that is, so you can pick a narrower choice.
 - **Links stop at 8 KB.** A fragment never reaches a server, but chat apps,
   e-mail and share sheets are less forgiving. Every bundled example fits in
-  full (landmarks ≈ 4 KB). Past 8 KB the app says so and suggests Export pack.
+  full (landmarks ≈ 6 KB). Past 8 KB the app says so and suggests Export pack.
 - **Opening a link** asks first — a shared pack is from someone else — and
   shows its name and what it holds; Cancel imports nothing. The `#pack=` is
   removed from the address straight away, so a reload never imports twice.

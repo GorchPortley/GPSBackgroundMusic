@@ -9,19 +9,35 @@
  * Rolled chords matter more than they sound like they should — a harp never
  * strikes all its notes at once, and staggering them by a 16th is most of what
  * makes the instrument read as a harp at all.
+ *
+ * The harp is the sampled concert harp (P5); until its recordings are decoded
+ * — and for good if they cannot be — it plays the Karplus–Strong string
+ * (C3.3), which itself falls back to the synth pluck. It rolls the same
+ * voice-led chord the strings hold (P1), an octave up, so the two move
+ * together.
+ *
+ * Form (P2): A A B B, the shape of a folk tune — an A strain played twice, a
+ * B strain on other chords, higher. The flute's tune is generated per place
+ * (C3.8) and comes back every time its strain does. The last bar of every
+ * fourth phrase is air — no harp, no drums, the strings ring (C3.7) — and
+ * before a handover the harp sweeps a glissando into the new downbeat (C3.6).
  */
 
 import {
-  chordNotes, mulberry32, noteName, pickMode, pickProgression, scaleNote,
+  chordNotes, mulberry32, noteName, pickMode, pickProgression, SCALES, scaleNote,
 } from '../audio/theory.js';
 import {
-  bassVoice, fluteVoice, kick, pluckVoice, rim, shaker, stringVoice,
+  bassVoice, fluteVoice, kick, rim, sampleVoice, shaker, stringVoice,
 } from '../audio/voices.js';
-import { gate, leadChord, quantise, rnd } from './util.js';
+import {
+  breathing, chordAt, gate, hasPerfectFifth, leadChord, melodyAt, melodyEvent, quantise, rnd,
+} from './util.js';
 
-// Voice-leading memory for the string bed (util.leadChord). Only this theme
-// touches it, and it starts over on any theme, tonic or mode change.
+// Voice-leading memory for the string bed (util.leadChord), and the tune's
+// bar cache (util.melodyAt). Only this theme touches them; both start over on
+// any theme, tonic or mode change.
 const stringsLead = {};
+const tune = {};
 
 const MODES = [
   'phrygian', 'aeolian', 'harmonicMinor', 'minorPentatonic', 'dorian',
@@ -40,8 +56,29 @@ const PROGRESSIONS = [
   { name: 'open fifths', degrees: [0], brightness: 0.50 },
 ];
 
-/** Where the flute enters. Sparse — it should feel sung, not played. */
-const FLUTE_ENTRIES = [0, 6, 10];
+/** Where the harp rolls, per density; two versions, swapped each time round. */
+const HARP_PATTERNS = {
+  sparse: [[0, 8], [0, 10]],
+  busy: [[0, 4, 8, 12], [0, 6, 8, 14]],
+};
+
+/**
+ * A section's chord on `d` if the mode gives it a perfect fifth, else the
+ * nearest neighbour that has one — never the tonic, or the section would
+ * not leave home.
+ */
+function sectionChord(scale, d) {
+  const len = (SCALES[scale] || SCALES.aeolian).length;
+  return [d, d - 2, d + 2, d - 1, d + 1]
+    .map((x) => ((x % len) + len) % len)
+    .find((x) => x !== 0 && hasPerfectFifth(scale, x)) ?? d;
+}
+
+/** The B strain: VI — VII — iv — v where the mode has them, else a neighbour. */
+function strainB(scale, barsPerChord) {
+  const wish = barsPerChord > 1 ? [5, 6] : [5, 6, 3, 4];
+  return wish.map((d) => sectionChord(scale, d));
+}
 
 export const fantasy = {
   id: 'fantasy',
@@ -67,28 +104,46 @@ export const fantasy = {
       strings: 0.65 + 0.35 * (1 - e * 0.3),
       bass: gate(e, 0.10, 0.40),
       harp: gate(d, 0.18, 0.46),
-      flute: gate(b, 0.30, 0.48) * (0.45 + 0.55 * (1 - e * 0.5)),
+      // Brightness brings the flute forward; a dark place still has a quiet one.
+      flute: (0.25 + 0.75 * gate(b, 0.30, 0.48)) * (0.45 + 0.55 * (1 - e * 0.5)),
       perc: gate(e, 0.44, 0.40),
+    };
+
+    const tuneA = {
+      name: 'fantasy-flute',
+      density: 0.12 + 0.35 * d,
+      rest: 0.70 - 0.15 * d,
+      leap: 0.05 + 0.3 * t,             // folk tunes step; tension makes them leap
+      contour: (b - 0.5) * 1.2,
+      lo: 0,
+      hi: 7,
     };
 
     return {
       seed,
       mood,
-      trim: 0.85,
+      trim: 1.09,
       bpm: 54 + e * 42 + (rng() - 0.5) * 3,
       root,
       scale,
       progression: progression.degrees,
       barsPerChord,
       layers,
+      // Forests and rivers are half of this theme: the place comes through in full.
+      ambience: 1,
+      // A A B B. Depends only on scale and chord rate (discrete fields).
+      form: {
+        breathEvery: 4,
+        sections: 'AABB',
+        B: { progression: strainB(scale, barsPerChord) },
+      },
 
       timbre: {
         stringCutoff: 900 + b * 2600,
         stringDetune: 5 + t * 12,
         stringVibrato: 6 + w * 8,
         chordSize: t > 0.5 ? 4 : 3,
-        harpBright: 0.15 + b * 0.4,     // harps are dark and woody, not glassy
-        harpDecay: 1.4 + s * 2.4,
+        harpRelease: 1.4 + s * 2.4,     // the hall (or forest) the harp rings in
         fluteBreath: 0.10 + (1 - w) * 0.18,
         droneCutoff: 170 + b * 420,
         airCutoff: 420 + b * 2200,
@@ -105,8 +160,11 @@ export const fantasy = {
 
       harp: {
         rollSteps: 1,                   // 16th between rolled notes
-        pattern: d > 0.6 ? [0, 4, 8, 12] : [0, 8],
+        patterns: d > 0.6 ? HARP_PATTERNS.busy : HARP_PATTERNS.sparse,
       },
+
+      // The tune (C3.8). The B strain sits higher, as B strains do.
+      gen: { A: tuneA, B: { ...tuneA, lo: 3, hi: 10 } },
 
       perc: {
         frame: e > 0.46,                // frame drum
@@ -124,13 +182,31 @@ export const fantasy = {
   /* ------------------------------------------------------------------ step */
 
   step(io, plan, pos) {
-    const { step, stepInBar, bar, barInPhrase, time, stepDur, barDur } = pos;
-    const { scale, progression, barsPerChord, layers, timbre, perc, harp } = plan;
+    const { step, stepInBar, bar, phrase, time, stepDur, barDur } = pos;
+    const { scale, barsPerChord, layers, timbre, perc, harp } = plan;
 
-    const chordIndex = Math.floor(bar / barsPerChord) % progression.length;
-    const degree = progression[chordIndex];
-    const chordStart = stepInBar === 0 && bar % barsPerChord === 0;
+    const { degree, letter, chordChange } = chordAt(plan, bar);
+    const chordStart = stepInBar === 0 && chordChange;
+    const strainTwo = letter === 'B';
+    // The last bar before a waiting change lands (C3.6): its second half is
+    // the fill, and the fill wins over the bar of air, as in spec.js.
+    const fillBar = pos.stepsToCommit !== undefined && pos.stepsToCommit <= 16;
+    const filling = fillBar && stepInBar >= 8;
+    const breath = breathing(plan, pos) && !fillBar;
+    const cycle = Math.floor(phrase / 4);
     const human = (salt) => (rnd(plan.seed, bar, step, salt) - 0.5) * 0.008;
+
+    const harpNote = (note, at, gain, pan) => sampleVoice(io, {
+      instrument: 'harp',
+      note,
+      time: at,
+      dur: stepDur * 3,
+      gain,
+      release: timbre.harpRelease,
+      reverb: 0.45,
+      delay: 0.15,
+      pan,
+    });
 
     /* ---- strings: the bed ---- */
     if (chordStart && layers.strings > 0.02) {
@@ -149,7 +225,7 @@ export const fantasy = {
     }
 
     /* ---- bass: root and fifth, an open sound with no third ---- */
-    if (layers.bass > 0.05 && (stepInBar === 0 || (stepInBar === 8 && plan.mood.e > 0.45))) {
+    if (layers.bass > 0.05 && (stepInBar === 0 || (stepInBar === 8 && plan.mood.e > 0.45 && !breath))) {
       bassVoice(io, {
         note: scaleNote(plan.root, scale, degree + (stepInBar === 8 ? 4 : 0)),
         time: time + human(1),
@@ -160,40 +236,53 @@ export const fantasy = {
       });
     }
 
-    /* ---- harp: rolled chords, never struck all at once ---- */
-    if (layers.harp > 0.05 && harp.pattern.includes(stepInBar)) {
+    /* ---- fill: a harp glissando up the mode into the new downbeat ---- */
+    if (filling) {
+      const i = stepInBar - 8;                      // 0..7
+      harpNote(scaleNote(plan.root + 36, scale, degree + i),
+        time + human(15), 0.07 * Math.max(0.55, layers.harp) * (0.7 + i * 0.05), -0.35 + i * 0.1);
+    }
+
+    /* ---- harp: rolled chords, never struck all at once. It rolls the
+       strings' voice-led chord an octave up (plus the octave of its lowest
+       note on top), so harp and strings move together. Rests in the bar of
+       air and under the glissando. ---- */
+    const pattern = harp.patterns[rnd(plan.seed, cycle, 23) < 0.5 ? 0 : 1];
+    if (layers.harp > 0.05 && !breath && !filling && pattern.includes(stepInBar)) {
+      // The strings' current voicing, if it is this plan's (not a moment
+      // after a key change, before the strings have re-voiced).
+      const own = stringsLead.prev && stringsLead.themeId === plan.themeId &&
+        stringsLead.root === plan.root && stringsLead.scale === plan.scale;
+      const led = (own ? stringsLead.prev : chordNotes(plan.root + 24, scale, degree, 3))
+        .slice().sort((a, x) => a - x);
+      const chord = led.map((n) => n + 12);
+      if (chord.length < 4) chord.push(chord[0] + 12);
       const ascending = rnd(plan.seed, bar, stepInBar, 2) < 0.78;
       const size = 4;
       for (let i = 0; i < size; i++) {
         const which = ascending ? i : size - 1 - i;
-        pluckVoice(io, {
-          note: scaleNote(plan.root + 24, scale, degree + which * 2),
-          // The roll: each note a 16th behind the last.
-          time: time + i * stepDur * harp.rollSteps * 0.5 + human(3 + i),
-          gain: 0.085 * layers.harp * (1 - i * 0.12),
-          decay: timbre.harpDecay,
-          bright: timbre.harpBright,
-          reverb: 0.45,
-          delay: 0.15,
-          pan: -0.25 + (i / (size - 1)) * 0.5,
-        });
+        // The roll: each note a 32nd behind the last.
+        harpNote(chord[which],
+          time + i * stepDur * harp.rollSteps * 0.5 + human(3 + i),
+          0.085 * layers.harp * (1 - i * 0.12),
+          -0.25 + (i / (size - 1)) * 0.5);
       }
     }
 
-    /* ---- flute: the tune, stepwise and modal ---- */
-    if (layers.flute > 0.05 && FLUTE_ENTRIES.includes(stepInBar)) {
-      const chance = stepInBar === 0 ? 0.62 : 0.3;
-      if (rnd(plan.seed, bar, step, 8) < chance * layers.flute) {
-        // Stepwise motion around the chord tones — folk melodies rarely leap.
-        const anchor = [0, 2, 4][Math.floor(rnd(plan.seed, bar, step, 9) * 3)];
-        const passing = Math.round(rnd(plan.seed, bar, step, 10) * 2) - 1;
-        const long = stepInBar === 0 && barInPhrase % 2 === 0;
-
+    /* ---- flute: the tune. Generated per place, stepwise and modal; each
+       strain has its own and it comes back every time that strain does. A
+       note holds until the next one (or a beat and a half). ---- */
+    if (layers.flute > 0.05 && !filling) {
+      const { degree: d0, events } = melodyAt(tune, plan, bar, strainTwo ? plan.gen.B : plan.gen.A);
+      const ev = melodyEvent(events, stepInBar);
+      if (ev) {
+        const next = events.find((x) => x.begin > ev.begin);
+        const steps = next ? Math.round((next.begin - ev.begin) * 16) : 16 - stepInBar;
         fluteVoice(io, {
-          note: scaleNote(plan.root + 36, scale, degree + anchor + passing),
+          note: scaleNote(plan.root + 36, scale, d0 + Number(ev.value)),
           time: time + human(11),
-          dur: stepDur * (long ? 6 : 3),
-          gain: 0.085 * layers.flute,
+          dur: stepDur * Math.min(6, Math.max(1.5, steps)),
+          gain: 0.08 * layers.flute * (stepInBar % 4 === 0 ? 1 : 0.8),
           breath: timbre.fluteBreath,
           vibrato: 12,
           reverb: 0.55,
@@ -202,25 +291,32 @@ export const fantasy = {
       }
     }
 
-    /* ---- percussion: frame drum and shaker, no kit ---- */
-    if (layers.perc > 0.04) {
+    /* ---- percussion: frame drum and shaker, no kit. Rests in the bar of
+       air; in the fill the frame drum rolls under the glissando. ---- */
+    if (layers.perc > 0.04 && !breath) {
       const p = layers.perc;
 
-      if (perc.frame && (stepInBar === 0 || stepInBar === 6 || stepInBar === 10)) {
-        kick(io, {
-          time: time + human(12),
-          gain: 0.26 * p * (stepInBar === 0 ? 1 : 0.6),
-          tone: 165,                    // higher and woodier than a kick drum
-        });
-      }
-      if (perc.frame && stepInBar === 8) {
-        rim(io, { time: time + human(13), gain: 0.06 * p, reverb: 0.4 });
-      }
-      if (perc.shaker > 0.05 && stepInBar % 2 === 1) {
-        shaker(io, {
-          time: time + human(14),
-          gain: 0.026 * p * perc.shaker * (stepInBar % 4 === 3 ? 1 : 0.6),
-        });
+      if (filling) {
+        if (perc.frame && stepInBar % 2 === 0) {
+          kick(io, { time: time + human(12), gain: 0.16 * p * (0.6 + (stepInBar - 8) / 14), tone: 165 });
+        }
+      } else {
+        if (perc.frame && (stepInBar === 0 || stepInBar === 6 || stepInBar === 10)) {
+          kick(io, {
+            time: time + human(12),
+            gain: 0.26 * p * (stepInBar === 0 ? 1 : 0.6),
+            tone: 165,                    // higher and woodier than a kick drum
+          });
+        }
+        if (perc.frame && stepInBar === 8) {
+          rim(io, { time: time + human(13), gain: 0.06 * p, reverb: 0.4 });
+        }
+        if (perc.shaker > 0.05 && stepInBar % 2 === 1) {
+          shaker(io, {
+            time: time + human(14),
+            gain: 0.026 * p * perc.shaker * (stepInBar % 4 === 3 ? 1 : 0.6),
+          });
+        }
       }
     }
   },

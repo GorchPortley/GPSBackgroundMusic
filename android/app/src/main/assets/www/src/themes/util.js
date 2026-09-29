@@ -8,7 +8,9 @@
  * (seed, bar, step, salt).
  */
 
-import { voiceLead } from '../audio/theory.js';
+import { SCALES, voiceLead } from '../audio/theory.js';
+import { markovBar } from './melody.js';
+import { parsePattern, queryPattern } from './pattern.js';
 
 /** 0 below `from`, ramping linearly to 1 over `width`. */
 export function gate(value, from, width) {
@@ -111,4 +113,98 @@ export function leadChord(state, plan, bar, notes, tonic = notes[0]) {
   state.bar = bar;
   state.prev = out;
   return out;
+}
+
+/* ------------------------------------------------ for the code themes */
+
+/** engine.js BARS_PER_PHRASE, repeated so this file never loads the engine (it runs under Node). */
+const PHRASE_BARS = 4;
+
+/**
+ * The chord under `bar`, section-aware: the same rule as spec.js `harmonyAt`
+ * (a letter's own `progression` restarts each phrase and counts
+ * bar-in-phrase; `degreeShift` moves whichever progression plays), so a
+ * code theme that returns `form.B = { progression }` and plays through this
+ * stays in the chords cue layers on top of it read. `chordChange` is true on
+ * the first bar of a chord, and on a section seam.
+ */
+export function chordAt(plan, bar) {
+  const phrase = Math.floor(bar / PHRASE_BARS);
+  const barInPhrase = bar % PHRASE_BARS;
+  const letter = section(plan, { phrase });
+  const part = letter ? plan.form[letter] : null;
+  const bpc = plan.barsPerChord || 1;
+  const own = part?.progression;
+  const prog = own || plan.progression;
+  const bars = own ? barInPhrase : bar;
+  let degree = prog[Math.floor(bars / bpc) % prog.length];
+  if (part?.degreeShift) degree += part.degreeShift;
+  const n = letter ? plan.form.sections.length : 1;
+  const seam = letter !== null && barInPhrase === 0 && letter !== plan.form.sections[(phrase + n - 1) % n];
+  return { degree, letter, chordChange: bars % bpc === 0 || seam };
+}
+
+/**
+ * One bar of generated melody (C3.8's seeded Markov walk) for a code theme,
+ * cached in `cache` (one plain object per line) so the bar never changes
+ * under the listener. Keyed like a spec `generate` layer: with sections, on
+ * (letter, bar in phrase), so each letter's tune comes back; without, on the
+ * absolute bar. `o` = { name, density, leap, rest, contour, lo, hi }, plain
+ * numbers. Returns { degree, events } — `events[i].value` is a degree
+ * relative to `degree`, `begin` a fraction of the bar.
+ */
+export function melodyAt(cache, plan, bar, o) {
+  const { degree, letter, chordChange } = chordAt(plan, bar);
+  if (cache.bar === bar && cache.seed === plan.seed && cache.letter === letter &&
+      cache.scale === plan.scale && cache.name === o.name) {
+    return cache.out;
+  }
+  const events = markovBar({
+    seed: plan.seed >>> 0,
+    bar: letter ? bar % PHRASE_BARS : bar,
+    name: letter ? `${o.name}/${letter}` : o.name,
+    chordDegree: degree,
+    chordChange,
+    scaleLength: (SCALES[plan.scale] || SCALES.aeolian).length,
+    density: o.density, leap: o.leap, rest: o.rest, contour: o.contour, lo: o.lo, hi: o.hi,
+  });
+  const out = { degree, events };
+  Object.assign(cache, { bar, seed: plan.seed, letter, scale: plan.scale, name: o.name, out });
+  return out;
+}
+
+/** The melody event starting on this 16th, or null. */
+export function melodyEvent(events, stepInBar) {
+  for (const ev of events) if (Math.round(ev.begin * 16) === stepInBar) return ev;
+  return null;
+}
+
+/**
+ * Does the triad on `degree` have a perfect fifth (not diminished or
+ * augmented)? For picking a section's chords per mode. Scales that are not
+ * seven notes stack no ordinary triads, so any degree passes.
+ */
+export function hasPerfectFifth(scaleName, degree) {
+  const s = SCALES[scaleName];
+  if (!s || s.length !== 7) return true;
+  const at = (d) => s[((d % 7) + 7) % 7] + 12 * Math.floor(d / 7);
+  return at(degree + 4) - at(degree) === 7;
+}
+
+const euclidCache = new Map();
+
+/**
+ * The 16th-note steps of a Euclidean rhythm k hits over n slots, rotated —
+ * C3.1's mini-notation `x(k,n,rot)` expanded by pattern.js itself, so a code
+ * theme and a spec share one algorithm. n = 16 fills a bar; n = 8, 8ths.
+ */
+export function euclid(k, n, rot = 0) {
+  const key = `${k},${n},${rot}`;
+  let steps = euclidCache.get(key);
+  if (!steps) {
+    const node = parsePattern(`x(${k | 0},${n | 0},${rot | 0})`);
+    steps = queryPattern(node, 0).map((ev) => Math.round(ev.begin * 16));
+    euclidCache.set(key, steps);
+  }
+  return steps;
 }

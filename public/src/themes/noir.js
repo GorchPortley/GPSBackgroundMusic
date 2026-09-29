@@ -1,5 +1,5 @@
 /**
- * Theme: Noir — brushed drums, upright bass, rain on the window.
+ * Theme: Noir — brushed drums, upright bass, a piano in a smoky room.
  *
  * Two things carry this one, and neither is the instruments:
  *
@@ -13,15 +13,36 @@
  *    somewhere.
  *
  * Chords are sevenths throughout — plain triads sound naive here.
+ *
+ * The comping piano is the sampled upright (P5); until it is decoded, and for
+ * good if it cannot be, the FM electric piano plays instead (C3.2) — either
+ * suits a bar at 2 a.m. Its rootless voicings are voice-led (P1), so the
+ * hands barely move while the harmony does.
+ *
+ * Form (P2): A A B A, the shape of a standard. The muted horn plays a head
+ * generated for this place (C3.8) in the A phrases; the bridge goes to iv and
+ * back through ii — V, the horn lays out and the piano takes a single-note
+ * line over held chords. The last bar of every form is a stop-time break:
+ * drums out, one bass note, the tune alone (C3.7). Before a handover the
+ * drummer fills and the bass climbs into it (C3.6).
  */
 
 import {
-  mulberry32, noteName, pickMode, pickProgression, scaleNote,
+  chordNotes, mulberry32, noteName, pickMode, pickProgression, scaleNote,
 } from '../audio/theory.js';
 import {
-  bellVoice, brush, hat, kick, padVoice, pizzVoice, pulseVoice,
+  brush, hat, kick, padVoice, pizzVoice, pulseVoice, sampleVoice,
 } from '../audio/voices.js';
-import { gate, quantise, rnd, swingOffset } from './util.js';
+import {
+  breathing, chordAt, gate, leadChord, melodyAt, melodyEvent, quantise, rnd, swingOffset,
+} from './util.js';
+
+// Voice-leading memory for the pad and the piano's rootless voicings, and the
+// bar caches of the two generated lines. Only this theme touches them.
+const padLead = {};
+const keysLead = {};
+const head = {};
+const solo = {};
 
 const MODES = [
   'locrian', 'phrygian', 'aeolian', 'harmonicMinor', 'dorian',
@@ -38,6 +59,16 @@ const PROGRESSIONS = [
   { name: 'I — vi — ii — V', degrees: [0, 5, 1, 4], brightness: 0.66 },
   { name: 'I — IV — iii — VI', degrees: [0, 3, 2, 5], brightness: 0.78 },
 ];
+
+/**
+ * Piano comping rhythms (16ths, before swing), by density. Two per density;
+ * which one plays changes each time round the form. The Charleston (1, the
+ * and of 2) is the sparse one.
+ */
+const COMPS = {
+  sparse: [[0, 6], [2, 11]],
+  busy: [[2, 6, 11, 14], [0, 6, 10, 14]],
+};
 
 export const noir = {
   id: 'noir',
@@ -56,6 +87,7 @@ export const noir = {
     const progression = pickProgression(quantise(b), rng(), PROGRESSIONS);
     const root = 34 + Math.floor(rng() * 12);
     const bpm = 62 + e * 44 + (rng() - 0.5) * 3;
+    const barsPerChord = e < 0.35 ? 2 : 1;
 
     const layers = {
       drone: 0.02 + 0.05 * s,
@@ -71,25 +103,39 @@ export const noir = {
       perc: gate(e, 0.14, 0.55),
     };
 
+    const tune = {
+      density: 0.12 + 0.3 * d,
+      rest: 0.74 - 0.12 * d,
+      leap: 0.12 + 0.4 * t,
+      contour: (b - 0.5) * 1.2,
+    };
+
     return {
       seed,
       mood,
-      trim: 1.38,
+      trim: 1.58,
       bpm,
       root,
       scale,
       progression: progression.degrees,
-      barsPerChord: e < 0.35 ? 2 : 1,
+      barsPerChord,
       layers,
+      // A room with the door shut: the street is heard, but through the wall.
+      ambience: 0.5,
+      // A A B A; the bridge is iv — iv — ii — V (iv — V at two bars a
+      // chord). Only the chord rate picks it, so it never changes mid-phrase.
+      form: {
+        breathEvery: 4,
+        sections: 'AABA',
+        B: { progression: barsPerChord > 1 ? [3, 4] : [3, 3, 1, 4] },
+      },
 
       // Hard shuffle at a ballad tempo, straighter as it gets quicker — which
       // is what players actually do.
       swing: 0.34 - Math.min(0.2, Math.max(0, (bpm - 70) / 200)),
 
       timbre: {
-        keysRatio: 1.0,                 // FM ratio 1 with a low index ~ Rhodes
-        keysIndex: 0.7 + t * 1.1,
-        keysDecay: 1.6 + s * 1.6,
+        keysRelease: 0.5 + s * 0.9,
         bassDecay: 0.5 + (1 - e) * 0.3,
         bassCutoff: 700 + b * 500,
         hornDuty: 0.32,                 // narrow pulse ~ a muted horn
@@ -107,6 +153,14 @@ export const noir = {
         delayMix: 0.04 + d * 0.14,
         delayFeedback: 0.12 + s * 0.22,
         delayTone: 1400 + b * 2400,
+      },
+
+      comps: d > 0.5 ? COMPS.busy : COMPS.sparse,
+
+      // The head (horn, A) and the bridge's piano line (B), both generated.
+      gen: {
+        head: { name: 'noir-head', ...tune, lo: 2, hi: 9 },
+        solo: { name: 'noir-solo', ...tune, rest: tune.rest - 0.08, lo: 4, hi: 12 },
       },
 
       perc: {
@@ -131,25 +185,43 @@ export const noir = {
   /* ------------------------------------------------------------------ step */
 
   step(io, plan, pos) {
-    const { step, stepInBar, bar, barInPhrase, time, stepDur, barDur } = pos;
-    const { scale, progression, barsPerChord, layers, timbre, perc } = plan;
+    const { step, stepInBar, bar, barInPhrase, phrase, time, stepDur, barDur } = pos;
+    const { scale, barsPerChord, layers, timbre, perc } = plan;
 
-    const chordIndex = Math.floor(bar / barsPerChord) % progression.length;
-    const degree = progression[chordIndex];
-    const nextDegree = progression[(chordIndex + 1) % progression.length];
-    const chordStart = stepInBar === 0 && bar % barsPerChord === 0;
+    const { degree, letter, chordChange } = chordAt(plan, bar);
+    const after = chordAt(plan, bar + 1);
+    // Beat four walks into the next chord only when the next bar brings one.
+    const nextDegree = after.chordChange ? after.degree : degree;
+    const chordStart = stepInBar === 0 && chordChange;
+    const bridge = letter === 'B';
+    const fillBar = pos.stepsToCommit !== undefined && pos.stepsToCommit <= 16;
+    // A handover's fill wins over the break, as in spec.js.
+    const stopTime = breathing(plan, pos) && !fillBar;
+    const filling = fillBar && stepInBar >= 8;
+    const cycle = Math.floor(phrase / 4);
 
     // Everything in this theme plays swung, so fold the offset into `time`.
     const swing = swingOffset(stepInBar, stepDur, plan.swing);
     const human = (salt) => (rnd(plan.seed, bar, step, salt) - 0.5) * 0.012;
     const at = (salt) => time + swing + human(salt);
 
+    const piano = (note, when, dur, gain, pan = 0) => sampleVoice(io, {
+      instrument: 'piano',
+      note,
+      time: when,
+      dur,
+      gain,
+      release: timbre.keysRelease,
+      reverb: 0.42,
+      delay: 0.12,
+      pan,
+    });
+
     /* ---- pad: a thin sustained cushion, mostly felt not heard ---- */
     if (chordStart && layers.pad > 0.02) {
-      const notes = [];
-      for (let i = 0; i < 3; i++) notes.push(scaleNote(plan.root + 24, scale, degree + 2 + i * 2));
       padVoice(io, {
-        notes,
+        notes: leadChord(padLead, plan, bar,
+          chordNotes(plan.root + 24, scale, degree + 2, 3), plan.root + 24),
         time,
         dur: barDur * barsPerChord * 1.05,
         gain: 0.035 * layers.pad,
@@ -160,85 +232,107 @@ export const noir = {
       });
     }
 
-    /* ---- keys: comping on the off-beats, the way a pianist stabs chords ---- */
+    /* ---- keys: comping, the way a pianist stabs chords. Rootless voicing —
+       3rd, 5th, 7th, 9th — voice-led so the hands barely move. In the bridge
+       it holds each chord instead; in the break, one chord on the one. ---- */
     if (layers.keys > 0.04) {
-      const compSteps = plan.mood.d > 0.5 ? [2, 6, 11, 14] : [2, 11];
-      if (compSteps.includes(stepInBar) &&
-          rnd(plan.seed, bar, step, 1) < 0.45 + plan.mood.d * 0.45) {
-        // Rootless voicing: 3rd, 5th, 7th, 9th. Leaving the root to the bass
-        // is what stops the middle of the mix turning to mud.
-        for (let i = 1; i < timbre.chordSize + 1; i++) {
-          bellVoice(io, {
-            note: scaleNote(plan.root + 24, scale, degree + i * 2),
-            time: at(2) + i * 0.004,   // a touch of spread, like fingers
-            gain: 0.05 * layers.keys,
-            decay: timbre.keysDecay,
-            ratio: timbre.keysRatio,
-            index: timbre.keysIndex,
-            reverb: 0.42,
-            delay: 0.14,
-          });
-        }
+      const pattern = plan.comps[rnd(plan.seed, cycle, 51) < 0.5 ? 0 : 1];
+      const held = (bridge && chordStart) || (stopTime && stepInBar === 0);
+      const stab = !bridge && !stopTime && !filling && pattern.includes(stepInBar) &&
+        rnd(plan.seed, bar, step, 1) < 0.5 + plan.mood.d * 0.4;
+      if (held || stab) {
+        // Leaving the root to the bass is what stops the middle of the mix
+        // turning to mud.
+        const notes = leadChord(keysLead, plan, bar,
+          chordNotes(plan.root + 24, scale, degree + 2, timbre.chordSize), plan.root + 24);
+        const dur = held ? barDur * barsPerChord * 0.9 : stepDur * 1.6;
+        notes.forEach((note, i) => {
+          // A touch of spread, like fingers; a held chord is rolled a little more.
+          piano(note, at(2) + i * (held ? 0.018 : 0.006), dur,
+            (held ? 0.042 : 0.05) * layers.keys * (1 - i * 0.06), -0.15 + i * 0.1);
+        });
       }
     }
 
-    /* ---- walking bass: quarter notes, chromatic approach into the next chord ---- */
+    /* ---- walking bass: quarter notes, chromatic approach into the next
+       chord. In the break it plays the one and stops; in the fill it
+       climbs a scale into the new downbeat. ---- */
     const bassStep = plan.doubleTime ? stepInBar % 2 === 0 : stepInBar % 4 === 0;
-    if (layers.bass > 0.05 && bassStep) {
+    if (layers.bass > 0.05 && bassStep && !(stopTime && stepInBar > 0)) {
       const beat = Math.floor(stepInBar / 4);
       const offBeat = plan.doubleTime && stepInBar % 4 !== 0;
       let note;
-      if (beat === 3) {
+      if (filling) {
+        // Up the scale from the third, then a half step under the next chord.
+        note = stepInBar === (plan.doubleTime ? 14 : 12)
+          ? scaleNote(plan.root, scale, nextDegree) - 1
+          : scaleNote(plan.root, scale, degree + 2 + (stepInBar - 8) / 2);
+      } else if (beat === 3 && !offBeat) {
         // Beat four leads to the next chord from a semitone away.
         const target = scaleNote(plan.root, scale, nextDegree);
         const from = rnd(plan.seed, bar, step, 3) < 0.5 ? -1 : 1;
         note = target + from;
+      } else if (offBeat) {
+        // Off-beat eighths pass through the scale between the quarter-note
+        // targets, which is what a walking line actually does at speed.
+        note = scaleNote(plan.root, scale, degree + beat * 2 + 1);
       } else {
         // Root, then a chord tone, then another — the body of the walk.
         const shape = [0, 4, 2][beat] ?? 0;
         note = scaleNote(plan.root, scale, degree + shape);
       }
 
-      // Off-beat eighths pass through the scale between the quarter-note
-      // targets, which is what a walking line actually does at speed.
-      if (offBeat) note = scaleNote(plan.root, scale, degree + beat * 2 + 1);
-
       pizzVoice(io, {
         note,
         time: at(4),
         gain: (offBeat ? 0.17 : 0.26) * layers.bass,
-        decay: timbre.bassDecay * (offBeat ? 0.7 : 1),
+        decay: timbre.bassDecay * (offBeat ? 0.7 : 1) * (stopTime ? 2.5 : 1),
         cutoff: timbre.bassCutoff,
         reverb: 0.18,
       });
     }
 
-    /* ---- muted horn: a sparse line, entering late in a phrase ---- */
-    if (layers.horn > 0.06 && barInPhrase >= 2 && (stepInBar === 4 || stepInBar === 10)) {
-      if (rnd(plan.seed, bar, step, 5) < 0.32 * layers.horn) {
-        const shape = [4, 6, 2, 8][Math.floor(rnd(plan.seed, bar, step, 6) * 4)];
-        pulseVoice(io, {
-          note: scaleNote(plan.root + 24, scale, degree + shape),
-          time: at(7),
-          dur: stepDur * (2 + Math.floor(rnd(plan.seed, bar, step, 8) * 4)),
-          gain: 0.055 * layers.horn,
-          duty: timbre.hornDuty,
-          cutoff: timbre.hornCutoff,
-          resonance: 2.2,
-          attack: 0.05,               // horns speak slowly
-          release: 0.14,
-          vibrato: 16,
-          reverb: 0.55,
-          delay: 0.25,
-        });
+    /* ---- the tune: a head on the muted horn in A, a single-note piano
+       line in the bridge. Generated for this place; each comes back every
+       time its section does. A note holds until the next. ---- */
+    if (!filling) {
+      const line = bridge ? solo : head;
+      const level = bridge ? layers.keys * 0.8 : layers.horn;
+      if (level > 0.06) {
+        const { degree: d0, events } = melodyAt(line, plan, bar, bridge ? plan.gen.solo : plan.gen.head);
+        const ev = melodyEvent(events, stepInBar);
+        if (ev) {
+          const next = events.find((x) => x.begin > ev.begin);
+          const steps = Math.min(5, Math.max(1.5, next ? Math.round((next.begin - ev.begin) * 16) : 4));
+          if (bridge) {
+            piano(scaleNote(plan.root + 36, scale, d0 + Number(ev.value)), at(7),
+              stepDur * steps * 0.8, 0.07 * level, 0.1);
+          } else {
+            pulseVoice(io, {
+              note: scaleNote(plan.root + 24, scale, d0 + Number(ev.value)),
+              time: at(7),
+              dur: stepDur * steps,
+              gain: 0.055 * level,
+              duty: timbre.hornDuty,
+              cutoff: timbre.hornCutoff,
+              resonance: 2.2,
+              attack: 0.05,               // horns speak slowly
+              release: 0.14,
+              vibrato: 16,
+              reverb: 0.55,
+              delay: 0.25,
+            });
+          }
+        }
       }
     }
 
-    /* ---- brushes: the swirl on every beat, accents on 2 and 4 ---- */
-    if (layers.perc > 0.04) {
+    /* ---- brushes: the swirl on every beat, accents on 2 and 4. Out in the
+       break. ---- */
+    if (layers.perc > 0.04 && !stopTime) {
       const p = layers.perc;
 
-      if (perc.brushes && stepInBar % 4 === 0) {
+      if (perc.brushes && stepInBar % 4 === 0 && !filling) {
         const backbeat = stepInBar === 4 || stepInBar === 12;
         brush(io, {
           time: at(9),
@@ -263,14 +357,21 @@ export const noir = {
         kick(io, { time: at(11), gain: 0.2 * p, tone: 120 });
       }
 
-      // Fills across the last bar of a phrase.
-      if (perc.fills && barInPhrase === 3 && stepInBar >= 8 && stepInBar % 2 === 0) {
+      // Fills: into every handover (whatever the energy), and in a busy
+      // scene into and out of the bridge.
+      const phraseFill = perc.fills && barInPhrase === 3 && (phrase % 4 === 1 || phrase % 4 === 2) &&
+        stepInBar >= 8;
+      if ((filling || phraseFill) && stepInBar % 2 === 0) {
         brush(io, {
           time: at(12),
-          gain: 0.03 * p * (0.5 + (stepInBar - 8) / 16),
+          gain: (filling ? 0.04 : 0.03) * Math.max(p, filling ? 0.5 : 0) * (0.5 + (stepInBar - 8) / 16),
           decay: 0.1,
           reverb: 0.35,
         });
+      }
+      // The drummer's setup: a kick on the and of four, into the new bar.
+      if (filling && stepInBar === 14) {
+        kick(io, { time: at(13), gain: 0.18 * Math.max(p, 0.5), tone: 120 });
       }
     }
   },

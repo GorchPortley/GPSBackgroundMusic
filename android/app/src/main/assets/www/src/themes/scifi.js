@@ -2,21 +2,35 @@
  * Theme: Sci-Fi — cold, wide, mechanical.
  *
  * Vast drones under quartal pads, a pulse sequencer that ticks like a system
- * doing something in another room, inharmonic bells, telemetry blips, and
- * noise sweeps that mark phrase boundaries the way a film cue would.
+ * doing something in another room, inharmonic bells, a glassy FM line, telemetry
+ * blips, and noise sweeps that mark phrase boundaries the way a film cue would.
  *
  * Harmony deliberately avoids resolving: fourths instead of thirds, whole-tone
  * and octatonic modes in the middle of the brightness range, and chord
- * sequences that shift by step rather than by function.
+ * sequences that shift by step rather than by function. The quartal stacks
+ * move in parallel on purpose — planing is the sound — so they are *not*
+ * voice-led.
+ *
+ * Form (P2): A A B A. In B the whole harmony planes up a scale step, the
+ * sequencer thins to every other hit and the glass line comes forward. The
+ * sequencer's rhythm is Euclidean (C3.1) — k hits spread over the bar, k from
+ * density — and its rotation and walk shift each time round the form. The
+ * last bar of every fourth phrase is air (C3.7): the machine stops and the
+ * pad rings. Before a handover the sequencer scans up in 16ths (C3.6).
  */
 
 import {
   mulberry32, noteName, pickMode, pickProgression, scaleNote,
 } from '../audio/theory.js';
 import {
-  bassVoice, bellVoice, blipVoice, clank, hat, kick, padVoice, pulseVoice, sweepVoice,
+  bassVoice, bellVoice, blipVoice, clank, fmVoice, hat, kick, padVoice, pulseVoice, sweepVoice,
 } from '../audio/voices.js';
-import { gate, quantise, rnd } from './util.js';
+import {
+  breathing, chordAt, euclid, gate, melodyAt, melodyEvent, quantise, rnd,
+} from './util.js';
+
+// The glass line's bar cache (util.melodyAt).
+const glass = {};
 
 /** Dark to bright. The floating modes sit in the middle, where they unsettle most. */
 const MODES = [
@@ -35,14 +49,8 @@ const PROGRESSIONS = [
   { name: 'I — V — I — IV', degrees: [0, 4, 0, 3], brightness: 0.82 },
 ];
 
-/** Sequencer figures in 16th positions, sparse to relentless. */
-const SEQ_PATTERNS = [
-  [0, 8],
-  [0, 6, 10],
-  [0, 4, 8, 12],
-  [0, 2, 4, 6, 8, 10, 12, 14],
-  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-];
+/** Sequencer hits per bar (Euclidean k of 16), sparse to relentless. */
+const SEQ_HITS = [2, 3, 4, 4, 6, 8, 11];
 
 /** Degree offsets the sequencer walks, in scale steps above the chord root. */
 const SEQ_SHAPE = [0, 3, 7, 3, 10, 7, 3, 0, 0, 3, 7, 10, 14, 10, 7, 3];
@@ -77,6 +85,8 @@ export const scifi = {
       pad: 0.70 + 0.30 * (1 - e * 0.3),
       bass: gate(e, 0.08, 0.38),
       seq: gate(d, 0.18, 0.45),
+      // The glass line is present even when nothing else moves.
+      glass: 0.5 + 0.5 * gate(d, 0.25, 0.5),
       bell: gate(t, 0.30, 0.5) * (0.4 + 0.6 * s),
       blip: gate(d, 0.30, 0.5),
       perc: gate(e, 0.42, 0.36),
@@ -86,13 +96,18 @@ export const scifi = {
     return {
       seed,
       mood,
-      trim: 0.72,
+      trim: 1.05,
       bpm: 56 + e * 40 + (rng() - 0.5) * 3,
       root,
       scale,
       progression: progression.degrees,
       barsPerChord,
       layers,
+      // Birdsong and café murmur fight a starship; keep the place faint.
+      ambience: 0.4,
+      // A A B A; B is the same harmony planed up a step. Constant, so it can
+      // never change mid-phrase.
+      form: { breathEvery: 4, sections: 'AABA', B: { degreeShift: 1 } },
 
       timbre: {
         padCutoff: 380 + b * 2600 + e * 500,
@@ -103,6 +118,10 @@ export const scifi = {
         seqCutoff: 700 + b * 5200,
         seqResonance: 3 + t * 7,        // resonant filter = machine
         bellRatio: t > 0.55 ? 1.414 : 3.7, // tritone or a high inharmonic clang
+        // Glass: an inharmonic FM ratio, more metal when tense, softer when warm.
+        glassRatio: t > 0.5 ? 3.5 : 7,
+        glassIndex: 1.2 + t * 2.4 + (1 - w) * 0.8,
+        glassRelease: 0.6 + s * 1.6,
         droneCutoff: 110 + b * 380,
         airCutoff: 300 + b * 2400,
         airQ: 0.5 + (1 - s) * 1.2,
@@ -117,8 +136,19 @@ export const scifi = {
       },
 
       seq: {
-        pattern: SEQ_PATTERNS[Math.min(SEQ_PATTERNS.length - 1, Math.floor(d * 5))],
+        hits: SEQ_HITS[Math.min(SEQ_HITS.length - 1, Math.floor(d * SEQ_HITS.length))],
         glide: t > 0.5,
+      },
+
+      // The glass line (C3.8): high, sparse, and it leaps when tense.
+      gen: {
+        name: 'scifi-glass',
+        density: 0.08 + 0.35 * d,
+        rest: 0.90 - 0.25 * d,
+        leap: 0.2 + 0.5 * t,
+        contour: (b - 0.5) * 1.4,
+        lo: 2,
+        hi: 12,
       },
 
       perc: {
@@ -138,12 +168,18 @@ export const scifi = {
   /* ------------------------------------------------------------------ step */
 
   step(io, plan, pos) {
-    const { step, stepInBar, bar, barInPhrase, time, stepDur, barDur } = pos;
-    const { scale, progression, barsPerChord, layers, timbre, perc, seq } = plan;
+    const { step, stepInBar, bar, barInPhrase, phrase, time, stepDur, barDur } = pos;
+    const { scale, barsPerChord, layers, timbre, perc, seq } = plan;
 
-    const chordIndex = Math.floor(bar / barsPerChord) % progression.length;
-    const degree = progression[chordIndex];
-    const chordStart = stepInBar === 0 && bar % barsPerChord === 0;
+    const { degree, letter, chordChange } = chordAt(plan, bar);
+    const chordStart = stepInBar === 0 && chordChange;
+    const drift = letter === 'B';
+    // The last bar before a waiting change lands (C3.6): its second half is
+    // the fill, and the fill wins over the bar of air, as in spec.js.
+    const fillBar = pos.stepsToCommit !== undefined && pos.stepsToCommit <= 16;
+    const filling = fillBar && stepInBar >= 8;
+    const breath = breathing(plan, pos) && !fillBar;
+    const cycle = Math.floor(phrase / 4);
     const human = (salt) => (rnd(plan.seed, bar, step, salt) - 0.5) * 0.006;
 
     /* ---- pad: quartal voicing. Stacking fourths instead of thirds is what
@@ -168,7 +204,7 @@ export const scifi = {
     }
 
     /* ---- sub bass: long, flat, unhurried ---- */
-    if (layers.bass > 0.05 && stepInBar === 0 && bar % Math.max(1, barsPerChord / 2) === 0) {
+    if (layers.bass > 0.05 && stepInBar === 0 && (chordChange || bar % Math.max(1, barsPerChord / 2) === 0)) {
       bassVoice(io, {
         note: scaleNote(plan.root, scale, degree),
         time: time + human(1),
@@ -179,28 +215,61 @@ export const scifi = {
       });
     }
 
-    /* ---- sequencer: the signature layer ---- */
-    if (layers.seq > 0.05) {
-      const idx = seq.pattern.indexOf(stepInBar);
-      if (idx >= 0) {
-        const shape = SEQ_SHAPE[(bar * seq.pattern.length + idx) % SEQ_SHAPE.length];
-        const note = scaleNote(plan.root + 24, scale, degree + shape);
-        const prev = SEQ_SHAPE[(bar * seq.pattern.length + idx - 1 + SEQ_SHAPE.length) % SEQ_SHAPE.length];
+    /* ---- sequencer: the signature layer. Euclidean hits; the rotation and
+       the point it starts its walk move each time round the form. In the
+       fill it scans up in 16ths instead. ---- */
+    const seqPulse = (idx, shape, prevShape, level, salt) => {
+      pulseVoice(io, {
+        note: scaleNote(plan.root + 24, scale, degree + shape),
+        time: time + human(salt),
+        dur: stepDur * 0.8,
+        gain: 0.075 * level,
+        duty: timbre.seqDuty,
+        cutoff: timbre.seqCutoff,
+        resonance: timbre.seqResonance,
+        // Portamento between steps reads as something scanning.
+        glideFrom: seq.glide && prevShape !== null
+          ? scaleNote(plan.root + 24, scale, degree + prevShape) : null,
+        reverb: 0.35,
+        delay: 0.45,
+        pan: idx % 2 ? 0.3 : -0.3,
+      });
+    };
+    if (filling) {
+      const i = stepInBar - 8;                     // 0..7, rising
+      // Present even where the sequencer was silent: it is the cue.
+      seqPulse(i, i * 2, i > 0 ? (i - 1) * 2 : null, (0.45 + 0.07 * i) * Math.max(0.5, layers.seq), 2);
+    } else if (layers.seq > 0.05 && !breath) {
+      const rot = Math.floor(rnd(plan.seed, cycle, 31) * 4);
+      const pattern = euclid(seq.hits, 16, rot);
+      const idx = pattern.indexOf(stepInBar);
+      if (idx >= 0 && (!drift || idx % 2 === 0)) {
+        const start = Math.floor(rnd(plan.seed, cycle, 32) * SEQ_SHAPE.length);
+        const at = (k) => SEQ_SHAPE[((start + bar * pattern.length + k) % SEQ_SHAPE.length + SEQ_SHAPE.length) % SEQ_SHAPE.length];
+        seqPulse(idx, at(idx), idx > 0 ? at(idx - 1) : null, layers.seq, 2);
+      }
+    }
 
-        pulseVoice(io, {
-          note,
-          time: time + human(2),
-          dur: stepDur * 0.8,
-          gain: 0.075 * layers.seq,
-          duty: timbre.seqDuty,
-          cutoff: timbre.seqCutoff,
-          resonance: timbre.seqResonance,
-          // Portamento between steps reads as something scanning.
-          glideFrom: seq.glide && idx > 0
-            ? scaleNote(plan.root + 24, scale, degree + prev) : null,
-          reverb: 0.35,
-          delay: 0.45,
-          pan: idx % 2 ? 0.3 : -0.3,
+    /* ---- glass: a generated FM line, high and far away. In A it only
+       answers, in the second and fourth bars; in B it carries the phrase. ---- */
+    if (layers.glass > 0.05 && !filling && (drift || barInPhrase % 2 === 1)) {
+      const { degree: d0, events } = melodyAt(glass, plan, bar, plan.gen);
+      const ev = melodyEvent(events, stepInBar);
+      if (ev) {
+        fmVoice(io, {
+          // Two octaves above the pad, not three: at ratio 7 the modulator of
+          // a higher note would pass Nyquist.
+          note: scaleNote(plan.root + 36, scale, d0 + Number(ev.value)),
+          time: time + human(6),
+          dur: stepDur * 0.6,
+          gain: 0.045 * layers.glass * (drift ? 1.35 : 1),
+          ratio: timbre.glassRatio,
+          index: timbre.glassIndex,
+          decay: 0.25,
+          release: timbre.glassRelease,
+          reverb: 0.75,
+          delay: 0.5,
+          pan: (rnd(plan.seed, bar, step, 12) - 0.5) * 0.9,
         });
       }
     }
@@ -220,7 +289,7 @@ export const scifi = {
     }
 
     /* ---- telemetry: sparse high blips, deliberately off-grid ---- */
-    if (layers.blip > 0.05 && stepInBar % 4 === 3) {
+    if (layers.blip > 0.05 && stepInBar % 4 === 3 && !breath && !filling) {
       if (rnd(plan.seed, bar, step, 4) < 0.22 * layers.blip) {
         const up = rnd(plan.seed, bar, step, 5) < 0.5;
         blipVoice(io, {
@@ -236,24 +305,22 @@ export const scifi = {
       }
     }
 
-    /* ---- sweeps: a riser into each phrase, a faller out of the last one ---- */
-    if (layers.sweep > 0.2 && stepInBar === 0) {
-      const intoPhrase = barInPhrase === 3;
-      if (intoPhrase) {
-        sweepVoice(io, {
-          time,
-          dur: barDur * 0.95,
-          gain: 0.05 * layers.sweep,
-          from: 300,
-          to: 6000,
-          q: 2.5,
-          reverb: 0.8,
-        });
-      }
+    /* ---- sweeps: a riser into each phrase. Not when a change is waiting —
+       the engine plays its own riser into a handover. ---- */
+    if (layers.sweep > 0.2 && stepInBar === 0 && barInPhrase === 3 && pos.stepsToCommit === undefined) {
+      sweepVoice(io, {
+        time,
+        dur: barDur * 0.95,
+        gain: 0.05 * layers.sweep,
+        from: 300,
+        to: 6000,
+        q: 2.5,
+        reverb: 0.8,
+      });
     }
 
     /* ---- percussion: deep and metallic, never a drum kit ---- */
-    if (layers.perc > 0.04) {
+    if (layers.perc > 0.04 && !breath) {
       const p = layers.perc;
 
       if (perc.kick && stepInBar === 0) {

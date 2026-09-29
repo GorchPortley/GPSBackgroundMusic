@@ -19,7 +19,7 @@
     "  your choice comes back when you leave.",
     "",
     "WHAT PLAYS WHERE",
-    "  Eiffel Tower           Paris     accordion, triplet lilt, warm",
+    "  Eiffel Tower           Paris     accordion, 3/4 waltz, warm",
     "  Broadway / Times Sq    Broadway  brass stabs, showy, fast",
     "  Shibuya Crossing       Neon      fast blips, tight, pentatonic",
     "  Colosseum              Ancient   vast, phrygian, frame drum",
@@ -58,10 +58,12 @@
       "id": "paris",
       "name": "Paris",
       "color": "#a4b4ff",
-      "description": "Accordion and pizzicato with a triplet lilt.",
-      "bpm": [92, 124, "e"],
+      "description": "Accordion musette waltz — oom-pah-pah, a café piano in the bridge.",
+      "_note": "A true 3/4 oom-pah-pah (six slots a bar). A A B A: accordion tune, a café-piano bridge.",
+      "bpm": [88, 116, "e"],
       "barsPerChord": 2,
-      "trim": 1.76,
+      "trim": 1.56,
+      "ambience": 0.8,
       "rootRange": [40, 49],
       "modes": ["aeolian", "harmonicMinor", "dorian", "ionian", "lydian"],
       "progressions": [
@@ -69,6 +71,11 @@
         { "name": "i — VI — ii — V", "degrees": [0, 5, 1, 4], "brightness": 0.5 },
         { "name": "I — vi — ii — V", "degrees": [0, 5, 1, 4], "brightness": 0.78 }
       ],
+      "form": {
+        "sections": "AABA",
+        "breathEvery": 2,
+        "B": { "progression": [3, 4] }
+      },
       "drone": 0.03,
       "air": 0.008,
       "fx": {
@@ -80,28 +87,57 @@
       },
       "layers": [
         {
-          "_note": "Twelve slots across the bar gives a 3-feel inside 4/4 — the lilt.",
           "name": "accordion",
           "voice": "pulse",
-          "pattern": "0 ~ ~ 2 ~ ~ 4 ~ ~ <2 5> ~ ~",
+          "pattern": "<[4@2 5 4@2 2] [0@2 2 4@3] [7@2 6 5@2 4] [2@2 3 4@3] [4@2 5 4@2 2] [0@2 2 4 5 7] [9@2 7 6@2 4] [0@3 ~ ~ ~]>",
+          "sections": "A",
           "octave": 3,
           "gain": 0.075,
-          "dur": 2.2,
           "params": { "duty": 0.35, "cutoff": [1600, 3400, "b"], "vibrato": 22, "resonance": 1.6 }
+        },
+        {
+          "name": "second-reed",
+          "voice": "pulse",
+          "pattern": "<[2@2 3 2@2 0] [-2@2 0 2@3] [5@2 4 3@2 2] [0@2 1 2@3] [2@2 3 2@2 0] [-2@2 0 2 3 5] [7@2 5 4@2 2] [-3@3 ~ ~ ~]>",
+          "sections": "A",
+          "breath": true,
+          "octave": 3,
+          "gain": 0.04,
+          "level": ["d", 0.5, 0.3],
+          "params": { "duty": 0.5, "cutoff": [1400, 2800, "b"], "vibrato": 26, "pan": -0.3 }
+        },
+        {
+          "name": "piano",
+          "voice": "sampled",
+          "pattern": "<[~ 4 5 7@2 5] [4@3 2 3 4] [7@2 6 4@2 2] [4@2 2 0@3]>",
+          "sections": "B",
+          "octave": 3,
+          "gain": 0.1,
+          "params": { "instrument": "piano", "release": 0.9, "reverb": 0.35, "pan": 0.1 }
+        },
+        {
+          "name": "accordion-hold",
+          "voice": "pulse",
+          "pattern": "<2 0 [4@3 2@3] 2>",
+          "sections": "B",
+          "octave": 2,
+          "gain": 0.04,
+          "params": { "duty": 0.35, "cutoff": [1200, 2400, "b"], "vibrato": 18, "attack": 0.15, "release": 0.4, "pan": -0.2 }
         },
         {
           "name": "bellows",
           "voice": "strings",
-          "pattern": "0@3 4",
+          "pattern": "0",
           "octave": 2,
           "gain": 0.045,
           "chordSize": 3,
+          "level": [0.55, 1, "w"],
           "params": { "cutoff": [900, 2000, "b"], "detune": 11, "vibrato": 14 }
         },
         {
           "name": "oom",
           "voice": "pizz",
-          "pattern": "0 ~ ~ ~ ~ ~ 4 ~ ~ ~ ~ ~",
+          "pattern": "0 ~ ~ 4 ~ ~",
           "octave": 1,
           "gain": 0.2,
           "params": { "decay": 0.4, "cutoff": 800 }
@@ -109,15 +145,18 @@
         {
           "name": "pah",
           "voice": "string",
-          "pattern": "~ ~ ~ [2 4] ~ ~ ~ ~ ~ [2 4] ~ ~",
+          "pattern": "~ 2 4 ~ 2 4",
+          "breath": true,
           "octave": 3,
           "gain": 0.05,
-          "params": { "decay": 0.8, "bright": 0.6, "pan": 0.25 }
+          "level": ["d", 0.1, 0.3],
+          "params": { "decay": 0.6, "bright": [0.45, 0.7, "b"], "pan": 0.25, "delay": 0.05 }
         },
         {
           "name": "brush",
           "voice": "brush",
-          "pattern": "x ~ ~ x ~ ~ x ~ ~ x ~ ~",
+          "pattern": "x ~ ~ x ~ ~",
+          "fill": "x(7,12)",
           "gain": 0.03,
           "level": ["e", 0.3, 0.4],
           "params": { "decay": 0.14, "swirl": true }
@@ -129,10 +168,12 @@
       "id": "broadway",
       "name": "Broadway",
       "color": "#ffd35c",
-      "description": "Brass stabs and a backbeat. All lights on.",
+      "description": "Brass stabs and a backbeat, a piano bridge, a stop-time break. All lights on.",
+      "_note": "AABA song form: tune over tresillo stabs, a piano bridge, a stop-time break.",
       "bpm": [118, 152, "e"],
       "barsPerChord": 1,
-      "trim": 0.9,
+      "trim": 0.85,
+      "ambience": 0.5,
       "rootRange": [42, 51],
       "modes": ["dorian", "mixolydian", "ionian", "majorPentatonic", "lydian"],
       "progressions": [
@@ -140,6 +181,11 @@
         { "name": "I — IV — V — I", "degrees": [0, 3, 4, 0], "brightness": 0.75 },
         { "name": "I — II — IV — V", "degrees": [0, 1, 3, 4], "brightness": 0.92 }
       ],
+      "form": {
+        "sections": "AABA",
+        "breathEvery": 4,
+        "B": { "progression": [3, 3, 1, 4] }
+      },
       "drone": 0.015,
       "air": 0.006,
       "fx": {
@@ -151,10 +197,11 @@
       },
       "layers": [
         {
-          "_note": "Stabs, not lines. Short and loud on the off-beats.",
           "name": "brass",
           "voice": "pulse",
-          "pattern": "~ ~ [0 2] ~ ~ ~ [4 2] ~ ~ ~ [0 4] ~ ~ [7 4] ~ ~",
+          "pattern": "[2 4](3,8)",
+          "sections": "A",
+          "breath": true,
           "octave": 3,
           "gain": 0.08,
           "dur": 0.7,
@@ -163,17 +210,52 @@
         {
           "name": "lead",
           "voice": "pulse",
-          "pattern": "<7 9> ~ <5 7> ~ 4 ~ ~ ~",
+          "pattern": "<[7 ~ 9 7 ~ 4 ~ ~] [5 ~ 4 2 ~ 0 ~ ~] [2 4 5 7 ~ 9 ~ 7] [9@4 ~ ~ ~ ~]>",
+          "sections": "A",
           "octave": 4,
           "gain": 0.055,
           "dur": 1.4,
-          "level": ["b", 0.5, 0.3],
+          "level": ["b", 0.3, 0.3],
           "params": { "duty": 0.25, "cutoff": 6000, "vibrato": 8 }
+        },
+        {
+          "name": "comp",
+          "voice": "sampled",
+          "pattern": "~ [0 4] ~ ~ ~ [2 4] ~ ~",
+          "sections": "A",
+          "breath": true,
+          "octave": 3,
+          "gain": 0.06,
+          "dur": 1,
+          "level": ["d", 0.45, 0.3],
+          "params": { "instrument": "piano", "release": 0.3, "reverb": 0.2, "pan": 0.3 }
+        },
+        {
+          "name": "bridge",
+          "voice": "sampled",
+          "generate": { "density": [0.3, 0.6, "d"], "range": [2, 11], "leap": [0.15, 0.45, "t"], "rest": 0.35, "contour": [-0.3, 0.5, "b"] },
+          "sections": "B",
+          "octave": 3,
+          "gain": 0.1,
+          "dur": 2,
+          "level": ["d", 0.02, 0.3],
+          "params": { "instrument": "piano", "release": 0.6, "reverb": 0.3 }
+        },
+        {
+          "name": "swell",
+          "voice": "strings",
+          "pattern": "0",
+          "sections": "B",
+          "octave": 3,
+          "gain": 0.045,
+          "chordSize": 4,
+          "params": { "cutoff": [1400, 3200, "b"], "detune": 8, "vibrato": 9 }
         },
         {
           "name": "walk",
           "voice": "pizz",
-          "pattern": "0 ~ 2 ~ 4 ~ 5 ~",
+          "breath": true,
+          "pattern": "<[0 ~ 2 ~ 4 ~ 5 ~] [7 ~ 5 ~ 4 ~ 2 ~]>",
           "octave": 1,
           "gain": 0.21,
           "params": { "decay": 0.36, "cutoff": 950 }
@@ -182,20 +264,25 @@
           "name": "kick",
           "voice": "kick",
           "pattern": "x ~ ~ ~ ~ ~ x ~",
+          "fill": "x ~ ~ x ~ x x x",
           "gain": 0.3,
+          "level": ["e", 0.05, 0.3],
           "params": { "tone": 125 }
         },
         {
           "name": "snare",
           "voice": "rim",
           "pattern": "~ ~ ~ ~ x ~ ~ ~ ~ ~ ~ ~ x ~ ~ ~",
-          "gain": 0.09
+          "fill": "~ ~ ~ ~ x ~ ~ x ~ x x ~ x x x x",
+          "gain": 0.09,
+          "level": ["e", 0.15, 0.3]
         },
         {
           "name": "sizzle",
           "voice": "hat",
           "pattern": "x*8",
           "gain": 0.03,
+          "level": ["e", 0.3, 0.35],
           "params": { "decay": 0.04 }
         },
         {
@@ -214,10 +301,12 @@
       "id": "neon",
       "name": "Neon",
       "color": "#f57cff",
-      "description": "Fast, tight and lit from below.",
+      "description": "Fast, tight and lit from below — a build, a breakdown and a drop.",
+      "_note": "A A B A C C B A: groove, drop (B, a composed hook), breakdown (C, no kick).",
       "bpm": [126, 156, "e"],
       "barsPerChord": 2,
-      "trim": 1.05,
+      "trim": 1.08,
+      "ambience": 0.6,
       "rootRange": [38, 47],
       "modes": ["hirajoshi", "insen", "minorPentatonic", "dorian", "majorPentatonic"],
       "progressions": [
@@ -225,6 +314,12 @@
         { "name": "i — VII", "degrees": [0, 6], "brightness": 0.55 },
         { "name": "I — V", "degrees": [0, 4], "brightness": 0.8 }
       ],
+      "form": {
+        "sections": "AABACCBA",
+        "breathEvery": 2,
+        "B": { "density": 0.2 },
+        "C": { "progression": [4, 3], "density": -0.3 }
+      },
       "drone": [0.03, 0.08, "s"],
       "air": [0.008, 0.02, "s"],
       "fx": {
@@ -239,27 +334,61 @@
           "name": "arp",
           "voice": "blip",
           "pattern": "[0 2 4 7]*4",
+          "sections": "AB",
           "octave": 4,
           "gain": 0.03,
+          "level": ["d", 0.1, 0.3],
           "params": { "duty": 0.125, "decay": 0.045, "reverb": 0.2, "delay": 0.35 }
+        },
+        {
+          "name": "glass",
+          "voice": "fm",
+          "pattern": "<7 9>(3,8) <4 2>(3,8)",
+          "sections": "AC",
+          "octave": 3,
+          "gain": 0.05,
+          "dur": 1,
+          "level": ["d", -0.1, 0.35],
+          "params": { "ratio": 3.5, "index": [1.6, 3, "t"], "decay": 0.22, "release": 0.45, "reverb": 0.25, "delay": 0.3, "pan": -0.25 }
         },
         {
           "name": "lead",
           "voice": "pulse",
           "pattern": "0 ~ ~ 4 ~ 2 ~ ~ <7 4> ~ ~ 2 ~ ~ ~ ~",
+          "sections": "A",
           "octave": 4,
           "gain": 0.06,
           "dur": 1.2,
           "params": { "duty": 0.25, "cutoff": [4000, 8000, "b"], "resonance": 2 }
         },
         {
+          "name": "hook",
+          "voice": "pulse",
+          "generate": { "density": [0.35, 0.65, "d"], "range": [0, 9], "leap": [0.15, 0.5, "t"], "rest": 0.35, "contour": [-0.3, 0.6, "b"] },
+          "sections": "B",
+          "octave": 4,
+          "gain": 0.055,
+          "dur": 1.2,
+          "params": { "duty": 0.125, "cutoff": [4000, 8000, "b"], "resonance": 2, "pan": 0.2 }
+        },
+        {
           "name": "sub",
           "voice": "bass",
-          "pattern": "0 ~ 0 ~ 0 ~ 0 ~",
+          "pattern": "~ 0 ~ 0 ~ 0 ~ 0",
+          "sections": "AB",
           "octave": 0,
           "gain": 0.24,
           "dur": 1.4,
           "params": { "cutoff": [300, 600, "b"] }
+        },
+        {
+          "name": "sub-c",
+          "voice": "bass",
+          "pattern": "0",
+          "sections": "C",
+          "octave": 0,
+          "gain": 0.2,
+          "params": { "cutoff": [240, 480, "b"] }
         },
         {
           "name": "pad",
@@ -273,24 +402,48 @@
         {
           "name": "kick",
           "voice": "kick",
-          "pattern": "x ~ ~ ~ x ~ ~ ~",
+          "pattern": "x*4",
+          "fill": "x ~ x ~ x ~ x ~ x x x x x x x x",
+          "sections": "AB",
           "gain": 0.32,
+          "level": ["e", 0.05, 0.3],
           "params": { "tone": 110 }
         },
         {
           "name": "hat",
           "voice": "hat",
           "pattern": "~ x ~ x ~ x ~ x ~ x ~ x ~ x ~ x",
+          "sections": "AB",
           "gain": 0.026,
+          "level": ["e", 0.25, 0.3],
           "params": { "decay": 0.028 }
+        },
+        {
+          "name": "clap",
+          "voice": "rim",
+          "pattern": "~ x ~ x",
+          "fill": "~ x ~ x [x x] [x x] [x x x x] [x x x x]",
+          "sections": "AB",
+          "gain": 0.06,
+          "level": ["e", 0.4, 0.3]
         },
         {
           "name": "clank",
           "voice": "clank",
-          "pattern": "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ x ~ ~ ~",
-          "gain": 0.05,
+          "pattern": "x(3,16,2)",
+          "sections": "AB",
+          "gain": 0.045,
           "level": ["d", 0.45, 0.3],
           "params": { "tone": 2200, "decay": 0.25 }
+        },
+        {
+          "name": "shaker",
+          "voice": "shaker",
+          "pattern": "x(5,8)",
+          "fill": "x*16",
+          "sections": "C",
+          "gain": 0.035,
+          "params": { "decay": 0.06 }
         }
       ]
     },
@@ -299,10 +452,12 @@
       "id": "ancient",
       "name": "Ancient",
       "color": "#e39a6b",
-      "description": "Stone, distance and a frame drum.",
+      "description": "Stone, distance, a reed and a lyre over low frame drums.",
+      "_note": "A A B A: the reed lament; B a fourth up, a lyre improvises. Frame drum in 3-in-8.",
       "bpm": [58, 82, "e"],
       "barsPerChord": 4,
-      "trim": 0.88,
+      "trim": 0.8,
+      "ambience": 0.9,
       "rootRange": [33, 42],
       "modes": ["phrygian", "aeolian", "harmonicMinor", "hirajoshi", "dorian"],
       "progressions": [
@@ -310,6 +465,11 @@
         { "name": "i — ♭II", "degrees": [0, 1], "brightness": 0.16 },
         { "name": "i — VII", "degrees": [0, 6], "brightness": 0.55 }
       ],
+      "form": {
+        "sections": "AABA",
+        "breathEvery": 2,
+        "B": { "degreeShift": 3, "density": 0.15 }
+      },
       "drone": [0.08, 0.15, "s"],
       "air": [0.014, 0.032, "s"],
       "droneCutoff": [130, 320, "b"],
@@ -334,13 +494,25 @@
         {
           "name": "reed",
           "voice": "flute",
-          "pattern": "0 ~ ~ 1 ~ ~ 0@2 ~ ~ ~ <4 3> ~ ~",
+          "pattern": "<[0 ~ ~ 1 ~ ~ 0@2 ~ ~ ~ 4 ~ ~] [3 ~ ~ 1 ~ ~ 0@4 ~ ~ ~] [4 ~ ~ 5 ~ ~ 4@2 ~ ~ 3 1 ~ ~] [0@6 ~ ~ ~ ~ ~ ~]>",
+          "sections": "A",
           "octave": 4,
           "gain": 0.07,
           "dur": 3,
-          "level": ["b", 0.4, 0.35],
+          "level": ["b", 0.3, 0.35],
           "humanise": 0.016,
           "params": { "breath": 0.3, "vibrato": 16, "reverb": 0.8, "delay": 0.3 }
+        },
+        {
+          "name": "lyre",
+          "voice": "string",
+          "generate": { "density": [0.15, 0.4, "d"], "range": [0, 7], "leap": [0.1, 0.4, "t"], "rest": 0.55, "contour": [-0.4, 0.3, "b"] },
+          "sections": "B",
+          "octave": 3,
+          "gain": 0.08,
+          "level": ["d", 0.05, 0.3],
+          "humanise": 0.012,
+          "params": { "decay": 2.2, "bright": [0.25, 0.5, "b"], "pan": -0.2, "reverb": 0.7, "delay": 0.2 }
         },
         {
           "name": "sub",
@@ -352,12 +524,30 @@
           "params": { "cutoff": [150, 320, "b"] }
         },
         {
+          "name": "doum",
+          "voice": "kick",
+          "pattern": "x ~ ~ ~",
+          "gain": 0.2,
+          "level": ["e", 0.05, 0.3],
+          "params": { "tone": 80 }
+        },
+        {
           "name": "frame",
           "voice": "kick",
-          "pattern": "x ~ ~ x ~ ~ x ~",
+          "pattern": "x(3,8)",
+          "fill": "x(3,8) x(7,8)",
           "gain": 0.22,
           "level": ["e", 0.2, 0.35],
           "params": { "tone": 150 }
+        },
+        {
+          "name": "sistrum",
+          "voice": "shaker",
+          "pattern": "x(5,16,1)",
+          "sections": "B",
+          "gain": 0.03,
+          "level": ["e", 0.6, 0.25],
+          "params": { "decay": 0.12 }
         },
         {
           "name": "bell",
@@ -375,15 +565,23 @@
       "name": "Vast",
       "color": "#a8e3ff",
       "description": "Almost nothing, very slowly, in a very large room.",
+      "_note": "A B A C: home, IV, home, vi. Glassy stars under an open sky.",
       "bpm": [48, 66, "e"],
       "barsPerChord": 4,
-      "trim": 0.96,
+      "trim": 0.79,
+      "ambience": 1,
       "rootRange": [31, 40],
       "modes": ["aeolian", "dorian", "mixolydian", "ionian", "lydian"],
       "progressions": [
         { "name": "drone", "degrees": [0], "brightness": 0.4 },
         { "name": "I — V", "degrees": [0, 4], "brightness": 0.75 }
       ],
+      "form": {
+        "sections": "ABAC",
+        "breathEvery": 2,
+        "B": { "progression": [3] },
+        "C": { "progression": [5], "density": -0.2 }
+      },
       "drone": [0.10, 0.18, "s"],
       "air": [0.02, 0.045, "s"],
       "droneCutoff": [110, 300, "b"],
@@ -426,12 +624,33 @@
           "params": { "duty": 0.4, "cutoff": 600, "attack": 0.5, "release": 1.2, "vibrato": 5 }
         },
         {
+          "name": "stars",
+          "voice": "fm",
+          "generate": { "density": 0.1, "range": [7, 14], "leap": [0.3, 0.6, "t"], "rest": 0.82, "contour": [-0.2, 0.4, "b"] },
+          "octave": 3,
+          "gain": 0.04,
+          "dur": 2,
+          "level": ["s", 0.35, 0.3],
+          "humanise": 0.02,
+          "params": { "ratio": 7, "index": [0.8, 1.6, "b"], "decay": 0.5, "release": 3, "reverb": 0.95, "delay": 0.45, "pan": 0.3 }
+        },
+        {
           "name": "far-bell",
           "voice": "bell",
           "pattern": "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ <7 4> ~ ~ ~",
           "octave": 5,
           "gain": 0.03,
+          "breath": true,
           "params": { "decay": 8, "ratio": 3.7, "index": 2, "reverb": 0.95, "delay": 0.5 }
+        },
+        {
+          "name": "distant",
+          "voice": "kick",
+          "pattern": "<x ~ ~ ~>",
+          "fill": "x(5,8)",
+          "gain": 0.16,
+          "level": ["e", 0.3, 0.4],
+          "params": { "tone": 58 }
         },
         {
           "name": "wind",
@@ -447,10 +666,12 @@
       "id": "stately",
       "name": "Stately",
       "color": "#e6dcb8",
-      "description": "Ceremonial brass and timpani. Somewhere official.",
+      "description": "Ceremonial brass and timpani, a harp in the processional. Somewhere official.",
+      "_note": "A A B A: fanfare and side drum; B a processional with harp and a composed descant.",
       "bpm": [76, 100, "e"],
       "barsPerChord": 2,
-      "trim": 1.06,
+      "trim": 1.09,
+      "ambience": 0.4,
       "rootRange": [38, 47],
       "modes": ["aeolian", "dorian", "mixolydian", "ionian", "lydian"],
       "progressions": [
@@ -458,6 +679,11 @@
         { "name": "I — V — IV — I", "degrees": [0, 4, 3, 0], "brightness": 0.8 },
         { "name": "i — iv — V", "degrees": [0, 3, 4], "brightness": 0.3 }
       ],
+      "form": {
+        "sections": "AABA",
+        "breathEvery": 4,
+        "B": { "progression": [3, 4] }
+      },
       "drone": [0.04, 0.09, "s"],
       "air": 0.01,
       "fx": {
@@ -471,16 +697,37 @@
         {
           "name": "brass",
           "voice": "pulse",
-          "pattern": "0@2 ~ 2 ~ 4@3 ~ ~ ~ <4 7>@2 ~ ~",
+          "pattern": "<[0@3 0 2@2 4@2] [4@3 2 4@2 7@2] [7@3 6 4@2 2@2] [4@6 ~ ~]>",
+          "sections": "A",
           "octave": 2,
           "gain": 0.07,
-          "dur": 3,
           "params": { "duty": 0.42, "cutoff": [1400, 3200, "b"], "attack": 0.05, "release": 0.25, "vibrato": 6 }
+        },
+        {
+          "name": "descant",
+          "voice": "pulse",
+          "generate": { "density": 0.12, "range": [4, 11], "leap": [0.1, 0.35, "t"], "rest": 0.65, "contour": [-0.2, 0.5, "b"] },
+          "sections": "B",
+          "octave": 2,
+          "gain": 0.055,
+          "dur": 3,
+          "level": ["d", 0.05, 0.3],
+          "params": { "duty": 0.42, "cutoff": [1600, 3400, "b"], "attack": 0.06, "release": 0.3, "vibrato": 7, "pan": -0.15 }
+        },
+        {
+          "name": "harp",
+          "voice": "sampled",
+          "pattern": "0 2 4 7 ~ ~ ~ ~",
+          "sections": "B",
+          "octave": 3,
+          "gain": 0.09,
+          "dur": 4,
+          "params": { "instrument": "harp", "release": 1.8, "reverb": 0.6, "pan": 0.25 }
         },
         {
           "name": "strings",
           "voice": "strings",
-          "pattern": "0@3 4",
+          "pattern": "<0 [0@3 4]>",
           "octave": 3,
           "gain": 0.055,
           "chordSize": 4,
@@ -499,8 +746,17 @@
           "name": "timpani",
           "voice": "kick",
           "pattern": "x ~ ~ ~ ~ ~ ~ ~ x ~ x ~ ~ ~ ~ ~",
+          "fill": "x ~ ~ x ~ x x x x x x x [x x] [x x] [x x] [x x]",
           "gain": 0.3,
           "params": { "tone": 145 }
+        },
+        {
+          "name": "side-drum",
+          "voice": "rim",
+          "pattern": "x(5,8)",
+          "sections": "A",
+          "gain": 0.05,
+          "level": ["e", 0.45, 0.3]
         },
         {
           "name": "cymbal",

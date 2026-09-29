@@ -69,7 +69,11 @@ export const minimal = {
 Register it in `public/src/themes/index.js`, or ship it in a pack.
 
 `public/src/themes/presets/overworld.js` is a fuller worked example — copy that
-one to start from something that already sounds like a piece of music.
+one to start from something that already sounds like a piece of music. It
+plays the form A A B A C A B A. B is a bridge on IV. C is a "clearing"
+(vi–IV–ii–V, density −0.15) where the kit drops out and a generated FM
+music-box line, a Karplus–Strong strum, a Euclidean tom and a shaker come in.
+The kit plays fills, and the harmony line rests in the breath bar.
 
 ### Numbers that follow the mood
 
@@ -374,7 +378,21 @@ is set (`null` otherwise); a code theme may use it however it likes, and cue
 layers with `sections` read it from your plan. If your `plan.form` also
 carries letter tweaks (`B: { progression, degreeShift }`), cue layers follow
 those chords, so only return them if your own `step` plays the same ones.
-The built-in code themes have no sections.
+All five built-in code themes use sections: wanderer, scifi, videogame and
+noir play A A B A, and fantasy plays A A B B.
+
+`util.js` has a few more helpers so a code theme can do what a spec does:
+
+| Helper | Does |
+|---|---|
+| `chordAt(plan, bar)` | `{ degree, letter, chordChange }`, the chord under a bar. It follows the same rule as spec `harmonyAt`, so a letter's `progression`/`degreeShift` in your `plan.form` is the harmony cue layers hear |
+| `melodyAt(cache, plan, bar, o)` | One bar of generated melody (the `generate` Markov walk), keyed per letter and bar in phrase like a spec layer and cached in `cache`. `o` = `{ name, density, leap, rest, contour, lo, hi }` |
+| `melodyEvent(events, stepInBar)` | The melody event starting on this sixteenth, or `null` |
+| `hasPerfectFifth(scale, degree)` | Whether that degree's triad has a perfect fifth, for choosing section chords that suit the mode |
+| `euclid(k, n, rot)` | The sixteenth steps of `x(k,n,rot)`, expanded by `pattern.js`, so code and specs share one algorithm |
+
+Section chords should depend only on discrete plan fields (`scale`,
+`barsPerChord`), so they never change in the middle of a phrase.
 
 ### Three rules the engine relies on
 
@@ -551,9 +569,10 @@ Or send a **link**: **Share link** in the Anywhere panel packs the themes (or a
 single cue, or everything) into `…/#pack=<data>` — the JSON, raw-DEFLATE
 compressed and base64url-encoded. Opening it asks before importing and then
 takes exactly the same path as a pasted file: `sanitise()`, then
-`validateSpec` / `validateCue`. Links are capped at 8 KB (a theme is typically
-300–700 bytes compressed, so the six landmarks themes make a ~3.3 KB link) and
-unpack to at most 256 KB. Saved places are left out unless ticked. In the
+`validateSpec` / `validateCue`. Links are capped at 8 KB. One landmarks theme on
+its own makes a 1.3–1.5 KB link, and the six together ~5.1 KB (they compress
+better together). The whole landmarks pack without its places is ~6.0 KB.
+Links unpack to at most 256 KB. Saved places are left out unless ticked. In the
 Android app the share is a bare `pack=…` code, which **Paste** accepts. The
 README's "Sharing by link" has the details.
 
@@ -576,7 +595,8 @@ public/src/themes/
   index.js              registry; register your theme here
   spec.js               the spec format, its validator, the voice table
   pattern.js            mini-notation parser
-  util.js               gate(), quantise(), rnd(), swingOffset()
+  util.js               gate(), quantise(), rnd(), swingOffset(), section(),
+                        chordAt(), melodyAt(), euclid() — §5
   cues.js               place-bound loops
   match.js              the condition language (tag / category / place / near)
   presets/overworld.js  worked spec example — copy this one

@@ -118,7 +118,7 @@ are the opt-in samples in `public/samples/` (P5, §3.1). ~9,600 lines total.
 | `public/src/themes/match.js` | Cue conditions → strength | `matchStrength`, `validateCondition`, `describeCondition` |
 | `public/src/themes/{wanderer,fantasy,scifi,videogame,noir}.js` | Code themes | one theme object each |
 | `public/src/themes/presets/overworld.js` | Built-in spec theme | `overworld` |
-| `public/src/themes/util.js` | Helpers for theme authors | `gate`, `quantise`, `rnd`, `swingOffset`, `breathing` (C3.7), `section` (P2: the phrase's section letter), `leadChord` (per-part voice-leading state; resets on theme/tonic/mode change) |
+| `public/src/themes/util.js` | Helpers for theme authors | `gate`, `quantise`, `rnd`, `swingOffset`, `breathing` (C3.7), `section` (P2: the phrase's section letter), `leadChord` (per-part voice-leading state; resets on theme/tonic/mode change), `lerp`, and for code themes `chordAt` (section-aware chord under a bar, same rule as spec `harmonyAt`), `melodyAt` / `melodyEvent` (C3.8's Markov walk, cached per bar, section-keyed), `hasPerfectFifth`, `euclid` (C3.1 via pattern.js) |
 | `public/sw.js` | Service worker: app shell + place-lookup cache | — |
 | `server/index.js` | Static files + `/api/config`, `/api/places`, `/api/geocode` | — |
 | `server/places.js` | Google Places (New) `searchNearby`; type aliasing | `getNearbyPlaces`, `providerName` |
@@ -152,7 +152,11 @@ conditions: every file is **CC0 / public domain, or its licence and
 attribution are recorded** in `public/samples/LICENSES.md` with its source
 URL; the whole directory stays **within ~3 MB** (now 1.54 MB); and the voice
 that uses them **degrades to a synth** when they are missing or undecodable.
-They are opt-in: no built-in theme plays them by default.
+Sampled piano and harp are used by two built-in code themes, noir (piano
+comping) and fantasy (harp), and by three landmarks pack themes (paris and
+broadway use piano, stately uses harp). They are lazy-loaded the first time a
+playing layer asks for them (~1.5 MB in all). Until they decode, or if they
+fail, the voice plays its synth fallback.
 
 ### 3.2 Packs are data, never code
 Patterns are **parsed**, not evaluated. Never `eval`, `new Function`, dynamic
@@ -318,8 +322,8 @@ Follow the header of [tools/render-check.js](tools/render-check.js). Pass
 means `window.__R.pass === true`. `spreadDb` is max − min over *every*
 theme × mood row, so over `allThemes()` it reads ≈10–13 dB because calm and
 busy moods differ; the ≲ 4 dB guideline (§3.9) applies to the spread of each
-theme's loudest row (≈3.3 dB). For `landmarks.json` alone `spreadDb` is
-≈3–4 dB. This is the check that
+theme's loudest row (≈1–1.7 dB since the theme rework). For `landmarks.json`
+alone `spreadDb` is ≈5–5.5 dB. This is the check that
 catches NaN note times, leaked gain, and level mismatches. Run it against
 `allThemes()` (no `?pack=`) **and** against `examples/landmarks.json`.
 
@@ -841,7 +845,8 @@ example pack (C0.3). Dismiss stores a flag in `localStorage`.
   a name, and saved places **off unless ticked** (the panel also names every
   cue bound to coordinates). `#pack=` = base64url(deflate-raw(compact
   sanitised JSON)); links over `SHARE_LINK_MAX` 8 KB are refused with advice
-  to export a file (landmarks in full ≈ 4.1 KB, themes only ≈ 3.3 KB).
+  to export a file (landmarks in full ≈ 6.2 KB, without places ≈ 6.0 KB,
+  themes only ≈ 5.1 KB since the theme rework).
   Import (load or `hashchange`): hash cleared with `replaceState` at once,
   payload ≤ 32 KB, decompressed in 512-byte slices and cancelled past 256 KB,
   then an in-page `<dialog>` confirm (name + counts; Cancel/Escape import
@@ -887,8 +892,9 @@ example pack (C0.3). Dismiss stores a flag in `localStorage`.
   `themeId`). A section `progression` restarts at each of its phrases
   (`spec.js` `harmonyAt`); `density` resolves per-section levels in `plan()`.
   With sections, `generate` is keyed on (letter, bar in phrase), so each
-  letter's line repeats. Overworld plays A A B A (bridge on IV with a
-  generated line). Themes without `sections` produce identical events to
+  letter's line repeats. Overworld now plays A A B A C A B A (bridge on
+  IV, and a C "clearing" on vi–IV–ii–V with a generated FM line); the five
+  code themes use sections through `util.chordAt`/`melodyAt`. Themes without `sections` produce identical events to
   before. THEMES.md §2 "Sections".
 - ~~**Voice-leading chords**~~ — **done (P1).** `theory.voiceLead(prev, next,
   { anchor, range })` picks the inversion × octave of `next` with the least
